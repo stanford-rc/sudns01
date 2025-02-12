@@ -3,6 +3,9 @@ bin/
 lib/
 pyvenv.cfg
 
+# python stuff
+__pycache__
+
 # editor stuff
 ~*
 *.swp
