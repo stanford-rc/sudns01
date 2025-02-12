@@ -110,7 +110,6 @@ class KrbCreds:
     ccache: pathlib.Path | str
     client_keytab: pathlib.Path | None
 
-KERBEROS_REALM: str = 'stanford.edu'
 DNSUPDATE_SERVER: str = 'acme-dnss.stanford.edu'
 DNSUPDATE_PORT: int = 53
 DNSUPDATE_TIMEOUT: float = 10.0
