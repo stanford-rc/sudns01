@@ -1,0 +1,4 @@
+dnspython>=2.7.0
+gssapi>=1.8.0
+mypy
+
