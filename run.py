@@ -90,6 +90,9 @@ import dns.tsig
 import dns.update
 import gssapi
 
+# local imports
+import resolver
+
 # Set up logging
 logging.basicConfig(
     level='DEBUG',
@@ -108,7 +111,7 @@ class KrbCreds:
     client_keytab: pathlib.Path | None
 
 KERBEROS_REALM: str = 'stanford.edu'
-DNSUPDATE_SERVER: dns.name.Name = dns.name.from_text('acme-dns.stanford.edu')
+DNSUPDATE_SERVER: str = 'acme-dnss.stanford.edu'
 DNSUPDATE_PORT: int = 53
 DNSUPDATE_TIMEOUT: float = 10.0
 # TODO: Work out TARGET_DOMAIN automatically
@@ -125,47 +128,21 @@ acme_challenge_name_relative = acme_challenge_name.relativize(TARGET_DOMAIN)
 info(f"We will be working in domain {TARGET_DOMAIN}")
 info(f"We will be modifying label {acme_challenge_name_relative}")
 
-# Prep the DNS resolver
-
-dns_resolver = dns.resolver.Resolver(configure=True)
-dns_resolver.cache = dns.resolver.Cache(cleaning_interval=300)
+# Set up a Resolver
+dnslookup = resolver.Resolver()
 
 # Get the IPs for our DNS server
-
-dnsupdate_server_answers: list[dns.resolver.Answer] = list()
-dnsupdate_server_ips: list[str] = list()
 try:
-    debug(f"Querying for DNSUPDATE_SERVER IPv6")
-    dnsupdate_server_answer6 = dns.resolver.resolve(
-        qname=DNSUPDATE_SERVER,
-        rdtype=dns.rdatatype.AAAA,
-        rdclass=dns.rdataclass.IN,
-    )
-    if dnsupdate_server_answer6.rrset is not None:
-        for rr in dnsupdate_server_answer6.rrset:
-            dnsupdate_server_answers.append(rr)
-except dns.resolver.NoAnswer:
-    pass
-try:
-    debug(f"Querying for DNSUPDATE_SERVER IPv4")
-    dnsupdate_server_answer4 = dns.resolver.resolve(
-        qname=DNSUPDATE_SERVER,
-        rdtype=dns.rdatatype.A,
-        rdclass=dns.rdataclass.IN,
-    )
-    if dnsupdate_server_answer4.rrset is not None:
-        for rr in dnsupdate_server_answer4.rrset:
-            dnsupdate_server_answers.append(rr)
-except dns.resolver.NoAnswer:
-    pass
-for answer in dnsupdate_server_answers:
-    if answer.rdtype != dns.rdatatype.A:
-        debug(f"Skipping record {rr} with wrong data type")
-    if answer.rdclass != dns.rdataclass.IN:
-        debug(f"Skipping record {rr} with wrong data class")
-    answer_address = answer.to_text()
-    info(f"Adding IP {answer_address} for {DNSUPDATE_SERVER}")
-    dnsupdate_server_ips.append(answer_address)
+    dnsupdate_server_ips = dnslookup.get_ip(DNSUPDATE_SERVER)
+except resolver.ResolverError as e:
+    print(f"Temporary error: {e}")
+    sys.exit(2)
+except resolver.ResolverErrorPermanent as e:
+    print(f"Permanent error: {e}")
+    sys.exit(1)
+if len(dnsupdate_server_ips) == 0:
+    print(f"No IP addresses found for {DNSUPDATE_SERVER}")
+    sys.exit(1)
 
 # Prep DNS TKEY authentication, including GSSAPI.
 
