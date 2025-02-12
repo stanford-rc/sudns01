@@ -92,6 +92,13 @@ class Resolver():
 		:raises ResolverErrorPermanent: There was a permanent problem doing your DNS lookup.
 		"""
 
+		debug(
+			f"Resolver running get_ip for {query} with " +
+			('cached ' if cached else '') +
+			('ipv6 ' if ipv6 else '') +
+			('search' if search else '')
+		)
+
 		# Do we use our caching resolver, or not?
 		resolver = (self._resolver if cached is True else self._resolver_nocache)
 
@@ -111,19 +118,23 @@ class Resolver():
 			dns.resolver.NXDOMAIN,
 			dns.resolver.NoAnswer,
 		):
+			warn(f"NXDOMAIN or no answer for {query}")
 			addresses = list()
 		except (
 			dns.resolver.NoNameservers,
 			dns.resolver.LifetimeTimeout,
-		):
+		) as e:
+			exception("Either NoNameservers or LifetimeTimeout for {query}")
 			raise ResolverError(
 				'All nameservers returned errors or did not respond.'
 			)
 		except dns.resolver.YXDOMAIN:
+			exception(f"YXDOMAIN for {query}")
 			raise ResolverErrorPermanent(
 				'A YXDOMAIN error happened.  What?!'
 			)
 
+		debug(f"Found {len(addresses)} result(s)")
 		return addresses
 
 class ResolverError(Exception):
