@@ -110,7 +110,7 @@ class KrbCreds:
     ccache: pathlib.Path | str
     client_keytab: pathlib.Path | None
 
-DNSUPDATE_SERVER: str = 'acme-dnss.stanford.edu'
+DNSUPDATE_SERVER: str = 'acme-dns.stanford.edu'
 DNSUPDATE_PORT: int = 53
 DNSUPDATE_TIMEOUT: float = 10.0
 # TODO: Work out TARGET_DOMAIN automatically
@@ -196,7 +196,10 @@ gss_ctx = gssapi.SecurityContext(
 #  characters.
 dnskey_keystr_max_len = min(63, (128 - len(DNSUPDATE_SERVER) - 1))
 dnskey_keystr = secrets.token_hex(32)[0:dnskey_keystr_max_len]
-dnskey_key_name = dns.name.Name(labels=(dnskey_keystr,)).concatenate(DNSUPDATE_SERVER)
+dnskey_keystr_name = dns.name.Name(labels=(dnskey_keystr,))
+dnskey_key_name = dnskey_keystr_name.concatenate(
+    dns.name.from_text(DNSUPDATE_SERVER)
+)
 debug(f"Using {dnskey_keystr_max_len}-char TKEY name {dnskey_key_name}")
 
 # Make a TSIG Key, using our random name and our Kerberos context, then put it
