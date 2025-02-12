@@ -91,7 +91,7 @@ import dns.update
 import gssapi
 
 # local imports
-import resolver
+import clients
 
 # Set up logging
 logging.basicConfig(
@@ -128,7 +128,7 @@ info(f"We will be working in domain {TARGET_DOMAIN}")
 info(f"We will be modifying label {acme_challenge_name_relative}")
 
 # Set up a Resolver
-dnslookup = resolver.Resolver()
+dnslookup = clients.ResolverClient()
 
 # Get the IPs for our DNS server
 try:

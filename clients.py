@@ -36,7 +36,7 @@ info = logger.info
 debug = logger.debug
 
 
-class Resolver():
+class ResolverClient():
 	"""A stub DNS resolver, for DNS lookups we need to do.
 
 	There are a few special DNS lookups that we need to do:
