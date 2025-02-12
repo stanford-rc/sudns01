@@ -80,12 +80,10 @@ import time
 # PyPi imports
 import dns.message
 import dns.name
-import dns.query
 import dns.rdataclass
 import dns.rdatatype
 import dns.rdtypes.ANY.TKEY
 import dns.rdtypes.ANY.TXT
-import dns.resolver
 import dns.tsig
 import dns.update
 import gssapi
@@ -133,15 +131,23 @@ dnslookup = clients.ResolverClient()
 # Get the IPs for our DNS server
 try:
     dnsupdate_server_ips = dnslookup.get_ip(DNSUPDATE_SERVER)
-except resolver.ResolverError as e:
+except clients.ResolverError as e:
     print(f"Temporary error: {e}")
     sys.exit(2)
-except resolver.ResolverErrorPermanent as e:
+except clients.ResolverErrorPermanent as e:
     print(f"Permanent error: {e}")
     sys.exit(1)
 if len(dnsupdate_server_ips) == 0:
     print(f"No IP addresses found for {DNSUPDATE_SERVER}")
     sys.exit(1)
+
+# Create the client for sending DNS queries
+dnsquery = clients.QueryClient(
+    ips=dnsupdate_server_ips,
+    port=DNSUPDATE_PORT,
+    timeout=DNSUPDATE_TIMEOUT,
+    udp=dns_queries_on_udp,
+)
 
 # Prep DNS TKEY authentication, including GSSAPI.
 
@@ -264,25 +270,10 @@ while (gss_step is not None) and (dnskey_tsig_key.secret.complete is not True):
     # Send out the query!
 
     # Try TCP first, then fall back to UDP
-    try:
-        print("REQUEST")
-        print(gss_step_request)
-        debug("Trying DNS query")
-        gss_step_response = dns.query.tcp(
-            gss_step_request,
-            where=dnsupdate_server_ips[0],
-            port=DNSUPDATE_PORT,
-            timeout=DNSUPDATE_TIMEOUT,
-        )
-    except (OSError, dns.exception.Timeout) as e:
-        info("DNS server not responding on TCP, falling back to UDP")
-        dns_queries_on_udp = True
-        gss_step_response = dns.query.udp(
-            gss_step_request,
-            where=dnsupdate_server_ips[0],
-            port=DNSUPDATE_PORT,
-            timeout=DNSUPDATE_TIMEOUT,
-        )
+    print("REQUEST")
+    print(gss_step_request)
+    debug("Trying DNS query")
+    gss_step_response = dnsquery.query(gss_step_request)
     print("RESPONSE")
     print(gss_step_response)
 
@@ -323,24 +314,11 @@ challenge_add.add(
     challenge_rdata,
 )
 
+
 # Send out the request
 print("REQUEST")
 print(challenge_add)
-if dns_queries_on_udp is True:
-    debug("Trying DNS query")
-    dns_add_response = dns.query.tcp(
-        challenge_add,
-        where=dnsupdate_server_ips[0],
-        port=DNSUPDATE_PORT,
-        timeout=DNSUPDATE_TIMEOUT,
-    )
-else:
-    dns_add_response = dns.query.udp(
-        challenge_add,
-        where=dnsupdate_server_ips[0],
-        port=DNSUPDATE_PORT,
-        timeout=DNSUPDATE_TIMEOUT,
-    )
+dns_add_response = dnsquery.query(challenge_add)
 print("RESPONSE")
 print(dns_add_response)
 
@@ -357,13 +335,6 @@ challenge_delete = dns.update.UpdateMessage(
     keyname=dnskey_key_name,
     keyalgorithm=dns.tsig.GSS_TSIG,
 )
-#challenge_delete_rdata = dns.rdtypes.ANY.TXT.TXT(
-#    rdclass=dns.rdataclass.IN,
-#    rdtype=dns.rdatatype.TXT,
-#    strings=(
-#        "challenge accepted 202502111103",
-#    ),
-#)
 challenge_delete.delete(
     acme_challenge_name_relative,
     challenge_rdata,
@@ -372,20 +343,6 @@ challenge_delete.delete(
 # Send out the request
 print("REQUEST")
 print(challenge_delete)
-if dns_queries_on_udp is True:
-    debug("Trying DNS query")
-    dns_delete_response = dns.query.tcp(
-        challenge_delete,
-        where=dnsupdate_server_ips[0],
-        port=DNSUPDATE_PORT,
-        timeout=DNSUPDATE_TIMEOUT,
-    )
-else:
-    dns_delete_response = dns.query.udp(
-        challenge_delete,
-        where=dnsupdate_server_ips[0],
-        port=DNSUPDATE_PORT,
-        timeout=DNSUPDATE_TIMEOUT,
-    )
+dns_delete_response = dnsquery.query(challenge_delete)
 print("RESPONSE")
 print(dns_delete_response)

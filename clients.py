@@ -21,8 +21,12 @@ import logging
 import socket
 
 # PyPi imports
+import dns.exception
+import dns.message
 import dns.name
+import dns.query
 import dns.resolver
+import dns.tsig
 
 RESOLVER_TIMEOUT: int = 10
 CACHE_CLEAN_INTERVAL: int = 300
@@ -31,7 +35,7 @@ CACHE_CLEAN_INTERVAL: int = 300
 logger = logging.getLogger(__name__)
 exception = logger.exception
 error = logger.error
-warn = logger.warning
+warning = logger.warning
 info = logger.info
 debug = logger.debug
 
@@ -118,7 +122,7 @@ class ResolverClient():
 			dns.resolver.NXDOMAIN,
 			dns.resolver.NoAnswer,
 		):
-			warn(f"NXDOMAIN or no answer for {query}")
+			warning(f"NXDOMAIN or no answer for {query}")
 			addresses = list()
 		except (
 			dns.resolver.NoNameservers,
@@ -148,3 +152,106 @@ class ResolverErrorPermanent(ResolverError):
 	You may be able to recover if you wait a while.
 	"""
 	pass
+
+class QueryClient():
+    """A client for making DNS queries
+
+    This is largely a generic client, but will be getting code to do make DNS
+    Update calls.
+    """
+
+    _ips: list[str]
+    _port: int
+    _timeout: float
+    _udp: bool
+
+    def __init__(self,
+        ips: list[str],
+        port: int = 53,
+        timeout: float = 10.0,
+        udp: bool = False,
+    ):
+        """
+        :param ips: A list of DNS server IP addresses.  Both IPv4 and IPv6 addresses are accepted.  The servers will be tried in the order listed.
+
+        :param port: The server port number to use.  Normally this is 53.
+
+        :param timeout: Timeout, in seconds, for queries to the DNS server.
+
+        :param udp: Set this to True if your DNS server does not support TCP.
+
+        :raise ValueError: Invalid port or timeout.
+        """
+        if (port < 0) or (port > 65535):
+            raise ValueError(f"Invalid port {port}")
+        if timeout < 0:
+            raise ValueError(f"Invalid timeout {timeout}")
+        self._ips = ips
+        self._port = port
+        self._timeout = timeout
+        self._udp = udp
+
+    def query(
+        self,
+        message: dns.message.Message,
+    ) -> dns.message.Message:
+        """Send a DNS query.
+
+        :param message: The message to send.
+
+        :raise dns.query.BadResponse: The server send an invalid response.
+
+        :raise EOFError: The connection closed—or ran out of data—unexpectedly.
+
+        :return: A DNS response Message
+        """
+        if self._udp:
+            warning("Using DNS over UDP.  Beware of issues!")
+
+        # Do we have any servers to try?
+        if len(self._ips) == 0:
+            raise NoServers()
+
+        # Take the first server from the list of IPs
+        server = self._ips[0]
+
+        # Send our DNS query
+        debug(f"Trying to send query to {server}")
+        try:
+            if self._udp:
+                result = dns.query.udp(
+                    message,
+                    where=server,
+                    port=self._port,
+                    timeout=self._timeout,
+                )
+            else:
+                result = dns.query.tcp(
+                    message,
+                    where=server,
+                    port=self._port,
+                    timeout=self._timeout,
+                )
+        except OSError as e:
+            # For an OS-type error, we probably need to try another IP
+            warning(f"Issue connecting to {server}: {e} — Trying another server")
+            self._ips.pop()
+            return self.query(message)
+        except dns.exception.Timeout:
+            warning(f"Timeout interacting with {server} — Trying another server")
+            self._ips.pop()
+            return self.query(message)
+        except (
+            dns.query.BadResponse,
+            EOFError,
+        ) as e:
+            raise DNSError()
+
+        # Did we actually make it through!?
+        return result
+
+class NoServers(Exception):
+    """There were no more servers to try."""
+
+class DNSError(Exception):
+    """We connected to the DNS server, but ran into a problem."""
