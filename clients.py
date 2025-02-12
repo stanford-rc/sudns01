@@ -182,8 +182,10 @@ class QueryClient():
 
         :param udp: Set this to True if your DNS server does not support TCP.
 
-        :raise ValueError: Invalid port or timeout.
+        :raise ValueError: Invalid port or timeout, or there were no servers.
         """
+        if len(ips) == 0:
+            raise ValueError("No server IPs")
         if (port < 0) or (port > 65535):
             raise ValueError(f"Invalid port {port}")
         if timeout < 0:
@@ -201,9 +203,9 @@ class QueryClient():
 
         :param message: The message to send.
 
-        :raise dns.query.BadResponse: The server send an invalid response.
+        :raise NoServers: All the DNS servers had problems.
 
-        :raise EOFError: The connection closed—or ran out of data—unexpectedly.
+        :raise DNSError: There was a working DNS server, but there was a problem.
 
         :return: A DNS response Message
         """
