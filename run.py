@@ -132,10 +132,10 @@ dnslookup = clients.ResolverClient()
 try:
     dnsupdate_server_ips = dnslookup.get_ip(DNSUPDATE_SERVER)
 except clients.ResolverError as e:
-    print(f"Temporary error: {e}")
+    print(f"Temporary error looking up {DNSUPDATE_SERVER}: {e}")
     sys.exit(2)
 except clients.ResolverErrorPermanent as e:
-    print(f"Permanent error: {e}")
+    print(f"Permanent error looking up {DNSUPDATE_SERVER}: {e}")
     sys.exit(1)
 if len(dnsupdate_server_ips) == 0:
     print(f"No IP addresses found for {DNSUPDATE_SERVER}")
@@ -170,8 +170,8 @@ else:
             },
         )
     except NotImplementedError:
-        error("Your GSSAPI implementation does not have support for manipulating credential stores.")
-        sys.exit(0)
+        print("Your GSSAPI implementation does not have support for manipulating credential stores.")
+        sys.exit(1)
 
 # Now, turn the DNS server name into a Kerberos principal.
 # The service name is "DNS", and the hostbased-service name format uses an
@@ -229,7 +229,10 @@ dnskey_tsig_keyring = dns.tsig.GSSTSigAdapter(
 # continue looping until the GSSAPI Context tells us that we are complete.
 gss_step: bytes | None = dnskey_tsig_key.secret.step(None)
 while (gss_step is not None) and (dnskey_tsig_key.secret.complete is not True):
-    debug(f"Doing GSSAPI Step with {gss_step}")
+    debug(
+        'Doing GSSAPI Step with data ' +
+        base64.b64encode(gss_step).decode('ascii')
+    )
 
     # Construct a DNS Query.
 
@@ -268,9 +271,14 @@ while (gss_step is not None) and (dnskey_tsig_key.secret.complete is not True):
     gss_step_request_rrset.add(gss_step_request_tkey)
 
     # Send out the query!
-
-    # Try TCP first, then fall back to UDP
-    gss_step_response = dnsquery.query(gss_step_request)
+    try:
+        gss_step_response = dnsquery.query(gss_step_request)
+    except clients.NoServers:
+        print("Ran out of DNS servers to try")
+        sys.exit(1)
+    except clients.DNSError:
+        print("DNS error - hopefully temporary!")
+        sys.exit(2)
 
     # Upon receipt of the response, we may already be complete.
     # If not complete, then run another step
@@ -279,10 +287,10 @@ while (gss_step is not None) and (dnskey_tsig_key.secret.complete is not True):
         gss_step = dnskey_tsig_key.secret.step(gss_step_response.answer[0][0].key)
 
 if not dnskey_tsig_key.secret.complete:
-    print('Error!')
-    sys.exit(1)
+    print('GSSAPI Negotiation failed')
+    sys.exit(2)
 else:
-    print('GSSAPI Negotiation Complete!')
+    debug('GSSAPI Negotiation Complete!')
 
 # Prepare our challenge record
 challenge_rdata = dns.rdtypes.ANY.TXT.TXT(
@@ -310,7 +318,14 @@ challenge_add.add(
 )
 
 # Send out the request
-dns_add_response = dnsquery.query(challenge_add)
+try:
+    dns_add_response = dnsquery.query(challenge_add)
+except clients.NoServers:
+    print("Ran out of DNS servers to try")
+    sys.exit(1)
+except clients.DNSError:
+    print("DNS error - hopefully temporary!")
+    sys.exit(2)
 
 # Wait to do the deletion
 input('Press Return to delete the record')
@@ -331,4 +346,11 @@ challenge_delete.delete(
 )
 
 # Send out the request
-dns_delete_response = dnsquery.query(challenge_delete)
+try:
+    dns_delete_response = dnsquery.query(challenge_delete)
+except clients.NoServers:
+    print("Ran out of DNS servers to try")
+    sys.exit(1)
+except clients.DNSError:
+    print("DNS error - hopefully temporary!")
+    sys.exit(2)
