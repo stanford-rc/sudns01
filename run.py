@@ -270,12 +270,7 @@ while (gss_step is not None) and (dnskey_tsig_key.secret.complete is not True):
     # Send out the query!
 
     # Try TCP first, then fall back to UDP
-    print("REQUEST")
-    print(gss_step_request)
-    debug("Trying DNS query")
     gss_step_response = dnsquery.query(gss_step_request)
-    print("RESPONSE")
-    print(gss_step_response)
 
     # Upon receipt of the response, we may already be complete.
     # If not complete, then run another step
@@ -314,13 +309,8 @@ challenge_add.add(
     challenge_rdata,
 )
 
-
 # Send out the request
-print("REQUEST")
-print(challenge_add)
 dns_add_response = dnsquery.query(challenge_add)
-print("RESPONSE")
-print(dns_add_response)
 
 # Wait to do the deletion
 input('Press Return to delete the record')
@@ -341,8 +331,4 @@ challenge_delete.delete(
 )
 
 # Send out the request
-print("REQUEST")
-print(challenge_delete)
 dns_delete_response = dnsquery.query(challenge_delete)
-print("RESPONSE")
-print(dns_delete_response)

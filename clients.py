@@ -22,11 +22,13 @@ import socket
 
 # PyPi imports
 import dns.exception
+import dns.flags
 import dns.message
 import dns.name
 import dns.query
 import dns.resolver
 import dns.tsig
+import dns.update
 
 RESOLVER_TIMEOUT: int = 10
 CACHE_CLEAN_INTERVAL: int = 300
@@ -205,6 +207,7 @@ class QueryClient():
 
         :return: A DNS response Message
         """
+        debug('Sending message ' + self._message_to_text(message))
         if self._udp:
             warning("Using DNS over UDP.  Beware of issues!")
 
@@ -248,7 +251,59 @@ class QueryClient():
             raise DNSError()
 
         # Did we actually make it through!?
+        debug('Got response ' + self._message_to_text(result))
         return result
+
+    @staticmethod
+    def _message_to_text(
+        message: dns.message.Message
+    ) -> str:
+        # Start with the top-level message stuff
+        op_str = message.opcode().name
+        rcode_str = message.rcode().name
+        flags_str = dns.flags.to_text(message.flags)
+
+        # Build a list of section components
+        sections_components: list[str] = list()
+
+        # Go through each DNS Message section
+        for question in message.question:
+            sections_components.append(
+                'QUESTION=<' + question.to_text() + '>'
+            )
+
+
+        if isinstance(message, dns.update.UpdateMessage):
+            for zone in message.zone:
+                sections_components.append(
+                    'ZONE=<' + zone.to_text() + '>'
+                )
+
+            for update in message.update:
+                sections_components.append(
+                    'UPDATE=<' + update.to_text() + '>'
+                )
+
+        for answer in message.answer:
+            sections_components.append(
+                'ANSWER=<' + question.to_text() + '>'
+            )
+
+        for authority in message.authority:
+            sections_components.append(
+                'AUTHORITY=<' + question.to_text() + '>'
+            )
+
+        for additional in message.additional:
+            sections_components.append(
+                'ADDITIONAL=<' + additional.to_text() + '>'
+            )
+
+        # Combine the sections into one string
+        sections_str = ' '.join(sections_components)
+
+        # Put everything together and return!
+        return f"#{message.id}: {op_str} {rcode_str} [{flags_str}] {sections_str}"
 
 class NoServers(Exception):
     """There were no more servers to try."""
