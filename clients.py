@@ -30,6 +30,9 @@ import dns.resolver
 import dns.tsig
 import dns.update
 
+# Local imports
+from clients.exceptions import *
+
 RESOLVER_TIMEOUT: int = 10
 CACHE_CLEAN_INTERVAL: int = 300
 
@@ -142,18 +145,6 @@ class ResolverClient():
 
 		debug(f"Found {len(addresses)} result(s)")
 		return addresses
-
-class ResolverError(Exception):
-	"""There was a problem with the DNS resolver.
-	"""
-	pass
-
-class ResolverErrorPermanent(ResolverError):
-	"""There was a temporary problem with the DNS resolver.
-
-	You may be able to recover if you wait a while.
-	"""
-	pass
 
 class QueryClient():
     """A client for making DNS queries
@@ -306,9 +297,3 @@ class QueryClient():
 
         # Put everything together and return!
         return f"#{message.id}: {op_str} {rcode_str} [{flags_str}] {sections_str}"
-
-class NoServers(Exception):
-    """There were no more servers to try."""
-
-class DNSError(Exception):
-    """We connected to the DNS server, but ran into a problem."""

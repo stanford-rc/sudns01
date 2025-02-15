@@ -90,6 +90,7 @@ import gssapi
 
 # local imports
 import clients
+import clients.exceptions
 
 # Set up logging
 logging.basicConfig(
@@ -131,10 +132,10 @@ dnslookup = clients.ResolverClient()
 # Get the IPs for our DNS server
 try:
     dnsupdate_server_ips = dnslookup.get_ip(DNSUPDATE_SERVER)
-except clients.ResolverError as e:
+except clients.exceptions.ResolverError as e:
     print(f"Temporary error looking up {DNSUPDATE_SERVER}: {e}")
     sys.exit(2)
-except clients.ResolverErrorPermanent as e:
+except clients.exceptions.ResolverErrorPermanent as e:
     print(f"Permanent error looking up {DNSUPDATE_SERVER}: {e}")
     sys.exit(1)
 if len(dnsupdate_server_ips) == 0:
@@ -273,10 +274,10 @@ while (gss_step is not None) and (dnskey_tsig_key.secret.complete is not True):
     # Send out the query!
     try:
         gss_step_response = dnsquery.query(gss_step_request)
-    except clients.NoServers:
+    except clients.exceptions.NoServers:
         print("Ran out of DNS servers to try")
         sys.exit(1)
-    except clients.DNSError:
+    except clients.exceptions.DNSError:
         print("DNS error - hopefully temporary!")
         sys.exit(2)
 
@@ -320,10 +321,10 @@ challenge_add.add(
 # Send out the request
 try:
     dns_add_response = dnsquery.query(challenge_add)
-except clients.NoServers:
+except clients.exceptions.NoServers:
     print("Ran out of DNS servers to try")
     sys.exit(1)
-except clients.DNSError:
+except clients.exceptions.DNSError:
     print("DNS error - hopefully temporary!")
     sys.exit(2)
 
@@ -348,9 +349,9 @@ challenge_delete.delete(
 # Send out the request
 try:
     dns_delete_response = dnsquery.query(challenge_delete)
-except clients.NoServers:
+except clients.exceptions.NoServers:
     print("Ran out of DNS servers to try")
     sys.exit(1)
-except clients.DNSError:
+except clients.exceptions.DNSError:
     print("DNS error - hopefully temporary!")
     sys.exit(2)
