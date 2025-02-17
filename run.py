@@ -89,7 +89,8 @@ import dns.update
 import gssapi
 
 # local imports
-import clients
+import clients.query
+import clients.resolver
 import clients.exceptions
 
 # Set up logging
@@ -127,7 +128,7 @@ info(f"We will be working in domain {TARGET_DOMAIN}")
 info(f"We will be modifying label {acme_challenge_name_relative}")
 
 # Set up a Resolver
-dnslookup = clients.ResolverClient()
+dnslookup = clients.resolver.ResolverClient()
 
 # Get the IPs for our DNS server
 try:
@@ -143,7 +144,7 @@ if len(dnsupdate_server_ips) == 0:
     sys.exit(1)
 
 # Create the client for sending DNS queries
-dnsquery = clients.QueryClient(
+dnsquery = clients.query.QueryClient(
     ips=dnsupdate_server_ips,
     port=DNSUPDATE_PORT,
     timeout=DNSUPDATE_TIMEOUT,
