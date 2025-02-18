@@ -67,6 +67,7 @@
 
 # stdlib imports
 import argparse
+import binascii
 import logging
 import pathlib
 import sys
@@ -110,6 +111,15 @@ argp.add_argument('--udp',
     help='Force using UDP for DNS queries.  Should never be needed.',
     action='store_true',
 )
+argc = argp.add_mutually_exclusive_group()
+argc.add_argument('--cleanup',
+    help='Remove all other ACME challenge records for {name}.  THIS CAN BE DANGEROUS!',
+    action='store_true',
+)
+argc.add_argument('--cleanup2',
+    action='store',
+    help=argparse.SUPPRESS,
+)
 argp.add_argument('--debug',
     help='Enable debug logging.  Overrides --verbose',
     action='store_true',
@@ -149,6 +159,29 @@ error = logger.error
 warn = logger.warning
 info = logger.info
 debug = logger.debug
+
+# Are we doing a cleanup?
+cleanup_challenge = "{:#010x}".format(
+    binascii.crc32(args.name.encode('ASCII'))
+)
+if args.cleanup:
+    # Tell the user what challenge to provide
+    print('This option will remove other ACME Challenge TXT records for {args.name}.')
+    print('THIS CAN BE DANGEROUS!  The TXT records might be in place for other reasons.')
+    print(f"To cleanup anyway, change `--cleanup` to `--cleanup2 {cleanup_challenge}` and try again.")
+    sys.exit(1)
+if args.cleanup2 is not None:
+    # The user has set --cleanup2.  What challenge do we expect?
+    debug(f"Found cleanup, expecting challenge {cleanup_challenge}")
+
+    # If the user provided a challenge, and it does _not_ match, then tell them.
+    if args.cleanup2 != cleanup_challenge:
+        print(f"You provided the wrong cleanup challenge for {args.name}.")
+        print(f"Change `--cleanup2 {args.cleanup2}` to `--cleanup` and try again.")
+        sys.exit(1)
+    else:
+        # We got a valid challenge!
+        info('Will cleanup other ACME challenges')
 
 # Parse custom Kerberos credentials config.
 CREDS: clients.tkey.KrbCreds | None = None
@@ -215,6 +248,10 @@ except NotImplementedError:
     print("Your GSSAPI implementation does not have support for manipulating credential stores.")
     sys.exit(1)
 
+# Do cleanup first, before issuing our challenge
+if args.cleanup2 is not None:
+    # TODO
+    raise NotImplementedError
 
 # Prepare our challenge record
 challenge_rdata = dns.rdtypes.ANY.TXT.TXT(
