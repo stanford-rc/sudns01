@@ -254,11 +254,14 @@ if args.cleanup2 is not None:
     raise NotImplementedError
 
 # Prepare our challenge record
+# Note that TXT records are tuples of byte strings, with no specific encoding.
+# Per RFC 8555 §8.4, challenge tokens only contain characters from the
+# base64url alphabet, which is a subset of ASCII.  So, we can encode as ASCII.
 challenge_rdata = dns.rdtypes.ANY.TXT.TXT(
     rdclass=dns.rdataclass.IN,
     rdtype=dns.rdatatype.TXT,
     strings=(
-        CHALLENGE,
+        CHALLENGE.encode('ASCII'),
     ),
 )
 
