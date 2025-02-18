@@ -113,22 +113,25 @@ class KrbCreds:
 DNSUPDATE_SERVER: str = 'acme-dns.stanford.edu'
 DNSUPDATE_PORT: int = 53
 DNSUPDATE_TIMEOUT: float = 10.0
-# TODO: Work out TARGET_DOMAIN automatically
 TARGET_NAME: dns.name.Name = dns.name.from_text('blargh.stanford.edu')
-TARGET_DOMAIN: dns.name.Name = dns.name.from_text('stanford.edu')
 TTL: int = 60
 CHALLENGE: str = ('hello ' + str(datetime.datetime.now()))
 CREDS: KrbCreds | None = None
-
 dns_queries_on_udp = False
-ACME_CHALLENGE_LABEL = dns.name.Name(labels=('_acme-challenge',))
-acme_challenge_name = ACME_CHALLENGE_LABEL.concatenate(TARGET_NAME)
-acme_challenge_name_relative = acme_challenge_name.relativize(TARGET_DOMAIN)
-info(f"We will be working in domain {TARGET_DOMAIN}")
-info(f"We will be modifying label {acme_challenge_name_relative}")
 
 # Set up a Resolver
 dnslookup = clients.resolver.ResolverClient()
+
+# From the target name (a FQDN), we need to work out:
+# * The _acme-challenge FQDN
+# * The underlying zone name
+# * The _acme-challenge name relative to the zone name
+target_domain = dnslookup.get_zone_name(TARGET_NAME)
+ACME_CHALLENGE_LABEL = dns.name.Name(labels=('_acme-challenge',))
+acme_challenge_name = ACME_CHALLENGE_LABEL.concatenate(TARGET_NAME)
+acme_challenge_name_relative = acme_challenge_name.relativize(target_domain)
+info(f"We will be working in domain {target_domain}")
+info(f"We will be modifying label {acme_challenge_name_relative}")
 
 # Get the IPs for our DNS server
 try:
@@ -307,7 +310,7 @@ challenge_rdata = dns.rdtypes.ANY.TXT.TXT(
 
 # Create the Add request
 challenge_add = dns.update.UpdateMessage(
-    zone=TARGET_DOMAIN,
+    zone=target_domain,
     rdclass=dns.rdataclass.IN,
     keyring=dnskey_tsig_keyring,
     keyname=dnskey_key_name,
@@ -336,7 +339,7 @@ input('Press Return to delete the record')
 
 # Create the Delete request
 challenge_delete = dns.update.UpdateMessage(
-    zone=TARGET_DOMAIN,
+    zone=target_domain,
     rdclass=dns.rdataclass.IN,
     keyring=dnskey_tsig_keyring,
     keyname=dnskey_key_name,

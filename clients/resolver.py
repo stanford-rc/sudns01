@@ -34,6 +34,7 @@ import dns.flags
 import dns.message
 import dns.name
 import dns.query
+import dns.rdatatype
 import dns.resolver
 import dns.tsig
 import dns.update
@@ -154,3 +155,95 @@ class ResolverClient():
 		debug(f"Found {len(addresses)} result(s)")
 		return addresses
 
+	def get_zone_name(self,
+		query: dns.name.Name | str,
+		cached: bool = True,
+	) -> dns.name.Name:
+		"""Return the zone name for a FQDN.
+
+		A Zone is a collection of DNS records.  When making changes to DNS,
+		instead of providing the Fully-Qualified Domain Name (FQDN) for every
+		record, you strip off the zone part of the FQDN.
+
+		For example, take FQDN "blargh.stanford.edu".  The zone is
+		"stanford.edu".  Now, take FQDN
+		"133.96.19.34.bc.googleusercontent.com.".  In that case, the zone is
+		"googleusercontent.com"!
+
+		To find out the zone name, you can look up the SOA (Start of Authority)
+		record for a FQDN.  The information comes in the Authority section of
+		the answer, with the zone as the name attached to the record.
+
+		This takes a FQDN, and returns a the name of the zone.
+
+		:param query: The DNS name to look up.
+
+		:param cached: If True, use cached lookups.
+
+		:returns: The name of the zone containing the given FQDN.
+
+		:raises ValueError: The name you gave is not "absolute" (it's not a FQDN).
+
+		:raises ResolverError: There was a problem looking up the name.  Maybe you can retry?
+
+		:raises ResolverErrorPermanent: There was a permanent problem doing your DNS lookup.
+		"""
+
+		debug(
+			f"Resolver running get_soa for {query} with " +
+			('cached ' if cached else '')
+		)
+		if isinstance(query, dns.name.Name) and not query.is_absolute():
+			raise ValueError(f"{query} is not a FQDN")
+
+		# Do we use our caching resolver, or not?
+		resolver = (self._resolver if cached is True else self._resolver_nocache)
+
+		# Do the lookup!
+		try:
+			answer = resolver.resolve(
+				qname=query,
+				rdtype=dns.rdatatype.SOA,
+				search=False,
+				lifetime=RESOLVER_TIMEOUT,
+                raise_on_no_answer=False,
+			)
+		except (
+			dns.resolver.NXDOMAIN,
+		):
+			warning(f"NXDOMAIN or no answer for {query}")
+		except (
+			dns.resolver.NoNameservers,
+			dns.resolver.LifetimeTimeout,
+		) as e:
+			exception("Either NoNameservers or LifetimeTimeout for {query}")
+			raise ResolverError(
+				'All nameservers returned errors or did not respond.'
+			)
+		except dns.resolver.YXDOMAIN:
+			exception(f"YXDOMAIN for {query}")
+			raise ResolverErrorPermanent(
+				'A YXDOMAIN error happened.  What?!'
+			)
+
+        # If we got multiple authority records, make sure they're the same name.
+		debug(f"Found {len(answer.response.authority)} result(s)")
+		if len(answer.response.authority) == 0:
+			raise ResolverError(
+				f"No authority found for {query}"
+			)
+		elif len(answer.response.authority) == 1:
+			return answer.response.authority[0].name
+		else:
+			# dns.name.Name objects with the same name hash to the same value.
+			# So, if you add the same names to a set, your set will end up with
+			# only one item!
+			names: set[dns.name.Name] = set()
+			for authority in answer.response.authority:
+				names.add(authority.name)
+			if len(names) > 1:
+				raise KeyError(
+					f"Multiple authority names returned: {names}"
+				)
+			else:
+				return names.pop()
