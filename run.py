@@ -66,6 +66,7 @@
 
 
 # stdlib imports
+import argparse
 import base64
 import dataclasses
 import datetime
@@ -93,9 +94,51 @@ import clients.query
 import clients.resolver
 import clients.exceptions
 
+# Process command-line arguments
+argp = argparse.ArgumentParser(
+    prog='Stanford ACME DNS Updater',
+)
+argp.add_argument('--nsupdate',
+    help='The DNS server that handles nsupdate messages.',
+    default='acme-dns.stanford.edu',
+)
+argp.add_argument('--port',
+    help='The port to use on the nsupdate server.',
+    type=int,
+    default=53,
+)
+argp.add_argument('--timeout',
+    help='How long to wait for a response from the DNS servers.',
+    type=float,
+    default=10.0,
+)
+argp.add_argument('--udp',
+    help='Force using UDP for DNS queries.  Should never be needed.',
+    action='store_true',
+)
+argp.add_argument('--debug',
+    help='Enable debug logging.  Overrides --verbose',
+    action='store_true',
+)
+argp.add_argument('--verbose',
+    help='Enable verbose logging.',
+    action='store_true',
+)
+argp.add_argument('name',
+    help='The DNS name to update, such as `example.stanford.edu`.',
+)
+argp.add_argument('challenge',
+    help='The ACME DNS01 challenge string.',
+)
+args = argp.parse_args()
+
 # Set up logging
 logging.basicConfig(
-    level='DEBUG',
+    level=(
+        'DEBUG' if args.debug is True else (
+            'INFO' if args.verbose is True else 'WARNING'
+        )
+    ),
 )
 
 logger = logging.getLogger(__name__)
@@ -110,14 +153,14 @@ class KrbCreds:
     ccache: pathlib.Path | str
     client_keytab: pathlib.Path | None
 
-DNSUPDATE_SERVER: str = 'acme-dns.stanford.edu'
-DNSUPDATE_PORT: int = 53
-DNSUPDATE_TIMEOUT: float = 10.0
-TARGET_NAME: dns.name.Name = dns.name.from_text('blargh.stanford.edu')
+DNSUPDATE_SERVER: str = args.nsupdate
+DNSUPDATE_PORT: int = args.port
+DNSUPDATE_TIMEOUT: float = args.timeout
+TARGET_NAME: dns.name.Name = dns.name.from_text(args.name)
 TTL: int = 60
-CHALLENGE: str = ('hello ' + str(datetime.datetime.now()))
+CHALLENGE: str = args.challenge
 CREDS: KrbCreds | None = None
-dns_queries_on_udp = False
+dns_queries_on_udp = args.udp
 
 # Set up a Resolver
 dnslookup = clients.resolver.ResolverClient()
