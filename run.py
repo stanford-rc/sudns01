@@ -67,27 +67,15 @@
 
 # stdlib imports
 import argparse
-import base64
-import dataclasses
-import datetime
 import logging
 import pathlib
-import secrets
-import socket
 import sys
-import tempfile
-import time
 
 # PyPi imports
 import dns.message
 import dns.name
-import dns.rdataclass
-import dns.rdatatype
-import dns.rdtypes.ANY.TKEY
 import dns.rdtypes.ANY.TXT
-import dns.tsig
 import dns.update
-import gssapi
 
 # local imports
 import clients.query
@@ -215,148 +203,18 @@ dnsquery = clients.query.QueryClient(
     udp=dns_queries_on_udp,
 )
 
-# Prep DNS TKEY authentication, including GSSAPI.
+# Set up DNS signing
+try:
+    signer = clients.tkey.GSSTSig(
+        dnsquery=dnsquery,
+        server=DNSUPDATE_SERVER,
+        creds=CREDS,
 
-# Start by loading in our GSSAPI credentials.
-# We might use environment variables, or we might accept a credentials cache
-# and keytab path directly.
-if CREDS is None:
-    debug('Initiate GSSAPI from environment')
-    gss_creds = gssapi.Credentials(
-        usage='initiate',
     )
-else:
-    debug(f"Initiate GSSAPI with keytab {CREDS.client_keytab} and cache {CREDS.ccache}")
-    try:
-        gss_creds = gssapi.Credentials(
-            usage='initiate',
-            store={
-                'client_keytab': str(CREDS.client_keytab),
-                'ccache': CREDS.ccache,
-            },
-        )
-    except NotImplementedError:
-        print("Your GSSAPI implementation does not have support for manipulating credential stores.")
-        sys.exit(1)
+except NotImplementedError:
+    print("Your GSSAPI implementation does not have support for manipulating credential stores.")
+    sys.exit(1)
 
-# Now, turn the DNS server name into a Kerberos principal.
-# The service name is "DNS", and the hostbased-service name format uses an
-# @-character as a separator, instead of a forward-slash.
-gss_dnsupdate_principal = gssapi.Name(
-    ('DNS@' + str(DNSUPDATE_SERVER)),
-    gssapi.NameType.hostbased_service,
-)
-
-# Make our GSSAPI Context, which contans the credentials & the service we're
-# going to get a ticket for.
-gss_ctx = gssapi.SecurityContext(
-    name=gss_dnsupdate_principal,
-    creds=gss_creds,
-    usage='initiate',
-)
-
-# Now, let's focus on the TKEY part.  RFC 2930 is helpful here!
-
-# A key is associated with a DNS name: keystr.domain.
-# keystr is something random.  domain is the dnsupdate server's FQDN.
-# There are two restrictions on length:
-# * Per RFC Section 2.1, len(keystr + '.' + domain) should be less than 128
-# * Individual DNS label length must be less than 64, so len(keystr) < 64
-# * Per Latacora's Cryptographic right answers, a 256-bit random number is OK,
-#   which is 32 bytes.
-#  secrets.token_hex(32) gives a 64-character string.  We'll take up to 63
-#  characters.
-dnskey_keystr_max_len = min(63, (128 - len(DNSUPDATE_SERVER) - 1))
-dnskey_keystr = secrets.token_hex(32)[0:dnskey_keystr_max_len]
-dnskey_keystr_name = dns.name.Name(labels=(dnskey_keystr,))
-dnskey_key_name = dnskey_keystr_name.concatenate(
-    dns.name.from_text(DNSUPDATE_SERVER)
-)
-debug(f"Using {dnskey_keystr_max_len}-char TKEY name {dnskey_key_name}")
-
-# Make a TSIG Key, using our random name and our Kerberos context, then put it
-# into a single-key keyring.
-dnskey_tsig_key = dns.tsig.Key(
-    name=dnskey_key_name,
-    secret=gss_ctx,
-    algorithm=dns.tsig.GSS_TSIG,
-)
-dnskey_tsig_keyring = dns.tsig.GSSTSigAdapter(
-    keyring={
-        dnskey_key_name: dnskey_tsig_key,
-    }
-)
-
-# Auth to the DNS server
-
-# GSSAPI Authentication is performed by going through a number of
-# request-response cycles with the server.  The number of cycles depends
-# primarily on if we already have a valid Kerberos ticket.  Regardless, we
-# continue looping until the GSSAPI Context tells us that we are complete.
-gss_step: bytes | None = dnskey_tsig_key.secret.step(None)
-while (gss_step is not None) and (dnskey_tsig_key.secret.complete is not True):
-    debug(
-        'Doing GSSAPI Step with data ' +
-        base64.b64encode(gss_step).decode('ascii')
-    )
-
-    # Construct a DNS Query.
-
-    # Start by constructing our DNS TKEY record, to add to the query.
-    # Per RFC 2930 Section 4.3, the inception & expiration times are ignored.
-    # Mode 3 is GSSAPI Negotiation.
-    gss_step_request_tkey = dns.rdtypes.ANY.TKEY.TKEY(
-        rdclass=dns.rdataclass.ANY,
-        rdtype=dns.rdatatype.TKEY,
-        algorithm=dns.tsig.GSS_TSIG,
-        inception=0,
-        expiration=0,
-        mode=3,
-        error=dns.rcode.NOERROR,
-        key=gss_step,
-    )
-
-    # Make our query, which will be against the unique DNS name (the "key
-    # name") that we randomly generated.
-    # Then, add the keyring (since we can't set that via the constructor)
-    gss_step_request = dns.message.make_query(
-        qname=dnskey_key_name,
-        rdclass=dns.rdataclass.ANY,
-        rdtype=dns.rdatatype.TKEY
-    )
-    gss_step_request.keyring = dnskey_tsig_keyring
-
-    # Add our TKEY record to the additional portion of the query
-    gss_step_request_rrset = gss_step_request.find_rrset(
-        section=dns.message.ADDITIONAL,
-        name=dnskey_key_name,
-        rdclass=dns.rdataclass.ANY,
-        rdtype=dns.rdatatype.TKEY,
-        create=True
-    )
-    gss_step_request_rrset.add(gss_step_request_tkey)
-
-    # Send out the query!
-    try:
-        gss_step_response = dnsquery.query(gss_step_request)
-    except clients.exceptions.NoServers:
-        print("Ran out of DNS servers to try")
-        sys.exit(1)
-    except clients.exceptions.DNSError:
-        print("DNS error - hopefully temporary!")
-        sys.exit(2)
-
-    # Upon receipt of the response, we may already be complete.
-    # If not complete, then run another step
-    if dnskey_tsig_key.secret.complete is False:
-        debug('We need to run another GSSAPI step')
-        gss_step = dnskey_tsig_key.secret.step(gss_step_response.answer[0][0].key)
-
-if not dnskey_tsig_key.secret.complete:
-    print('GSSAPI Negotiation failed')
-    sys.exit(2)
-else:
-    debug('GSSAPI Negotiation Complete!')
 
 # Prepare our challenge record
 challenge_rdata = dns.rdtypes.ANY.TXT.TXT(
@@ -373,9 +231,7 @@ challenge_rdata = dns.rdtypes.ANY.TXT.TXT(
 challenge_add = dns.update.UpdateMessage(
     zone=target_domain,
     rdclass=dns.rdataclass.IN,
-    keyring=dnskey_tsig_keyring,
-    keyname=dnskey_key_name,
-    keyalgorithm=dns.tsig.GSS_TSIG,
+    **signer.dnspython_args,
 )
 challenge_add.add(
     acme_challenge_name_relative,
@@ -402,9 +258,7 @@ input('Press Return to delete the record')
 challenge_delete = dns.update.UpdateMessage(
     zone=target_domain,
     rdclass=dns.rdataclass.IN,
-    keyring=dnskey_tsig_keyring,
-    keyname=dnskey_key_name,
-    keyalgorithm=dns.tsig.GSS_TSIG,
+    **signer.dnspython_args,
 )
 challenge_delete.delete(
     acme_challenge_name_relative,

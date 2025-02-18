@@ -19,9 +19,21 @@
 import dataclasses
 import logging
 import pathlib
+import secrets
+import typing
 
 # PyPi imports
+import dns.name
+import dns.rdataclass
+import dns.rdatatype
+import dns.rdtypes
+import dns.rdtypes.ANY.TKEY
+import dns.tsig
 import gssapi
+
+# local imports
+import clients.exceptions
+import clients.query
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -69,4 +81,267 @@ class KrbCreds:
 	If you specify this, you must also specify a custom credentials cache.
 	"""
 
+class GSSTSig():
+	"""
 
+    :param queryclient: A client for making DNS queries.
+
+	:param server: The nsupdate server fully-qualified domain name.
+
+	:param creds: Custom Kerberos credentials to to use: A custom credentials cache, and optionally a keytab.  If not defined, use the credentials cache from the environment, or the default credential cache.  Using this requires support for the Kerberos Credential Store Extension.
+
+	:param krb5_service: The Kerberos 5 service name to use when obtaining a Kerberos ticket for nsupdate.  This is normally "DNS".
+	"""
+
+	_dnsquery: clients.query.QueryClient
+	_server: str
+	_key: dns.tsig.Key
+	_keyname: dns.name.Name
+	_keyring: dns.tsig.GSSTSigAdapter
+
+	def __init__(
+		self,
+        dnsquery: clients.query.QueryClient,
+		server: str,
+		creds: KrbCreds | None = None,
+		krb5_service: str = 'DNS',
+	) -> None:
+		"""
+
+		:raises NotImplementedError: You tried providing custom credentials, but the GSSAPI library or Kerberos installation do not support it.
+
+		:raises gssapi.exceptions.GSSError: A GSSAPI or Kerberos error occurred, either in the process of obtaining Kerberos credentials, getting a Kerberos ticket or in the GSSAPI negotiation with the DNS server.
+
+		:raises clients.exceptions.NoServers: We were unable to communicate with the DNS server.
+
+		:raises clients.exceptions.DNSError: We were able to communicate with the DNS server, but there was an error.
+		"""
+		debug(
+			f"Instantiating Signer for server {krb5_service}/{server}" +
+			(' with custom creds' if creds is not None else '')
+		)
+
+		# Start by storing our server and Kerberos credentials
+		self._dnsquery = dnsquery
+		self._server = server
+
+		# Prep our Kerberos stuff
+
+		# Turn the DNS server name into a Kerberos principal.
+		# The hostbased-service name format uses an @-character as a separator,
+		# instead of a forward-slash.
+		debug(f"Server principal is {krb5_service}@{server}")
+		principal = gssapi.Name(
+			(krb5_service + '@' + server),
+			gssapi.NameType.hostbased_service,
+		)
+
+		# Load in our DNS credentials
+		# We might use environment variables, or we might accept a credentials cache
+		# and keytab path directly.
+		if creds is None:
+			debug('Initiate GSSAPI from environment')
+			gss_creds = gssapi.Credentials(
+				usage='initiate',
+			)
+		else:
+			debug(f"Initiate GSSAPI with keytab {creds.client_keytab} and cache {creds.ccache}")
+			try:
+				gss_creds = gssapi.Credentials(
+					usage='initiate',
+					store={
+						'client_keytab': str(creds.client_keytab),
+						'ccache': creds.ccache,
+					},
+				)
+			except NotImplementedError:
+				raise
+
+
+		# Make our Kerberos Context, which contans the credentials & the
+		# service we're going to get a ticket for.
+		gss_ctx = gssapi.SecurityContext(
+			name=principal,
+			creds=gss_creds,
+			usage='initiate',
+		)
+
+		# Prep the DNS TKEY parameters.  RFC 2930 is helpful here!
+
+		# A key is associated with a DNS name: keystr.domain.
+		# keystr is something random.  domain is the dnsupdate server's FQDN.
+		# There are two restrictions on length:
+		# * Per RFC Section 2.1, len(keystr + '.' + domain) should be less than 128
+		# * Individual DNS label length must be less than 64, so len(keystr) < 64
+		# * Per Latacora's Cryptographic right answers, a 256-bit random number is OK,
+		#   which is 32 bytes.
+		#  secrets.token_hex(32) gives a 64-character string.  We'll take up to 63
+		#  characters.
+		dnskey_keystr_max_len = min(63, (128 - len(server) - 1))
+		dnskey_keystr = secrets.token_hex(32)[0:dnskey_keystr_max_len]
+		dnskey_keystr_name = dns.name.Name(labels=(dnskey_keystr,))
+		self._keyname = dnskey_keystr_name.concatenate(
+			dns.name.from_text(server)
+		)
+		debug(f"Using {dnskey_keystr_max_len}-char TKEY name {self._keyname}")
+
+		# Make a TSIG Key, using our random name and our Kerberos context, then put it
+		# into a single-key keyring.
+		self._key = dns.tsig.Key(
+			name=self._keyname,
+			secret=gss_ctx,
+			algorithm=dns.tsig.GSS_TSIG,
+		)
+		self._keyring = dns.tsig.GSSTSigAdapter(
+			keyring={
+				self._keyname: self._key,
+			}
+		)
+
+		# Generate our TKEY record, then we're done!
+		self._do_auth()
+		return
+
+	def _do_auth(
+        self,
+    ) -> None:
+		"""Authenticate us to the DNS server, creating a TKEY record.
+
+		This method does the work of creating a TKEY record on the DNS server.
+		At the end, we will have a TKEY record negotiated with the server,
+		which will be used (by client code) to sign nsupdate messages.
+
+		To do this, we create a special DNS query.  It will be a query for an
+		"ANY TKEY" record, whose name is randomly-generated by us.  In the
+		ADDITIONAL section will be an ANY TKEY record of our own, using the
+		same randomly-generated name, that will contain Step 1 of the GSSAPI
+		negotiation.
+
+		We include our (currently-nascent) keyring in the request, which
+		dnspython will call to execute Step 2 of the GSSAPI negotiation.
+
+		GSSAPI/Kerberos negotiation only needs two steps, so that is all we
+		support.
+
+		:raises gssapi.exceptions.GSSError: A GSSAPI or Kerberos error occurred, either in the process of getting a Kerberos ticket or in the GSSAPI negotiation.
+
+		:raises clients.exceptions.NoServers: We were unable to communicate with the DNS server.
+
+		:raises clients.exceptions.DNSError: We were able to communicate with the DNS server, but there was an error.
+		"""
+
+		# We'll be doing a lot of work with our GSSAPI context, so grab it.
+		gss_ctx = self.key.secret
+
+		# GSSAPI Authentication is performed by going through a number of
+		# request-response cycles with the server.  For Kerberos 5, the process
+        # looks like this:
+        # 0. The client (us) gets a Kerberos ticket for the server.
+        # 1. The client sends a message to the server, containing the ticket.
+        # 2. The server sends a response message.
+        #
+        # dnspython's GSS-TSIG support only supports this two-step
+        # authentication process.  Some GSSAPI mechanisms require more steps.
+
+        # Begin step 1
+		gss_step1: bytes = gss_ctx.step(None)
+		debug('Doing GSSAPI Step 1')
+
+        # Construct a DNS Query to send Step 1 to the server.
+
+        # Start by constructing our DNS TKEY record, to add to the query.
+        # Per RFC 2930 Section 4.3, the inception & expiration times are ignored.
+        # Mode 3 is GSSAPI Negotiation.
+		gss_step_request_tkey = dns.rdtypes.ANY.TKEY.TKEY(
+			rdclass=dns.rdataclass.ANY,
+			rdtype=dns.rdatatype.TKEY,
+			algorithm=dns.tsig.GSS_TSIG,
+			inception=0,
+			expiration=0,
+			mode=3,
+			error=dns.rcode.NOERROR,
+			key=gss_step1,
+		)
+
+		# Make our query, which will be against the unique DNS name (the "key
+		# name") that we randomly generated.
+		# Then, add the keyring (since we can't set that via the constructor)
+		gss_step_request = dns.message.make_query(
+			qname=self.keyname,
+			rdclass=dns.rdataclass.ANY,
+			rdtype=dns.rdatatype.TKEY
+		)
+		gss_step_request.keyring = self.keyring
+
+		# Add our TKEY record to the additional portion of the query
+		gss_step_request_rrset = gss_step_request.find_rrset(
+			section=dns.message.ADDITIONAL,
+			name=self.keyname,
+			rdclass=dns.rdataclass.ANY,
+			rdtype=dns.rdatatype.TKEY,
+			create=True,
+		)
+		gss_step_request_rrset.add(gss_step_request_tkey)
+
+		# Send out the query!
+		# Upon receipt of the query, dnspython automatically pulls out the
+		# GSSAPI Step 2 message, and sends it to the GSSAPI context.
+		# NOTE: The clients.exceptions.NoServers and
+		# clients.exceptions.DNSError exceptions are passed through to the
+		# caller.
+		gss_step_response = self._dnsquery.query(gss_step_request)
+
+		# Since we don't support more than two GSSAPI steps, we either finished
+		# negotiation, or we failed.
+		if gss_ctx.complete:
+			debug('GSSAPI Negotiation complete!')
+			return
+		else:
+			error('GSSAPI Negotiation incomplete; bailing out')
+			raise NotImplementedError('Only two GSSAPI rounds are supported')
+
+	def __del__(self) -> None:
+		"""Clean 
+
+		This attempts to clean up the TKEY that was created on the DNS seerver,
+		per RFC 3645 §3.2.1.
+
+		The GSSAPI context is not cleaned up explicitly.  Per the gssapi
+		package's low-level API, cleanup is handled automatically.
+		"""
+		# TODO
+		pass
+
+
+	@property
+	def server(self) -> str:
+		return self._server
+
+	@property
+	def key(self) -> dns.tsig.Key:
+		return self._key
+
+	@property
+	def keyname(self) -> dns.name.Name:
+		return self._keyname
+
+	@property
+	def keyname_str(self) -> str:
+		return str(self.keyname)
+
+	@property
+	def keyring(self) -> dns.tsig.GSSTSigAdapter:
+		return self._keyring
+
+	class DNSPythonArgs(typing.TypedDict):
+		keyring: dns.tsig.GSSTSigAdapter
+		keyname: dns.name.Name
+		keyalgorithm: dns.name.Name
+
+	@property
+	def dnspython_args(self) -> DNSPythonArgs:
+		return {
+			'keyring': self.keyring,
+			'keyname': self.keyname,
+			'keyalgorithm': dns.tsig.GSS_TSIG,
+		}
