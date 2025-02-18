@@ -70,6 +70,7 @@ import argparse
 import base64
 import dataclasses
 import datetime
+import gssapi
 import logging
 import pathlib
 import secrets
@@ -94,9 +95,20 @@ import clients.query
 import clients.resolver
 import clients.exceptions
 
+# Does our GSSAPI have the Credential Store Extensions?
+if 'acquire_cred_from' in dir(gssapi.raw):
+    HAS_CREDENTIAL_STORE=True
+else:
+    HAS_CREDENTIAL_STORE=False
+
 # Process command-line arguments
 argp = argparse.ArgumentParser(
     prog='Stanford ACME DNS Updater',
+    epilog=(
+        'Your GSSAPI does ' + 
+        ('' if HAS_CREDENTIAL_STORE else 'not ') +
+        'support the Credential Store Extensions.'
+    )
 )
 argp.add_argument('--nsupdate',
     help='The DNS server that handles nsupdate messages.',
@@ -124,6 +136,14 @@ argp.add_argument('--verbose',
     help='Enable verbose logging.',
     action='store_true',
 )
+if HAS_CREDENTIAL_STORE:
+    argp.add_argument('--ccache',
+        help='Use a specific Kerberos credentials cache.  Default is to use what is defined in the environment.  Requires support from the GSSAPI and Kerberos libraries.',
+    )
+    argp.add_argument('--keytab',
+        help='Use a specific client keytab to authenticate to the nsupdate server.  Normally a separate program (like `kinit` or `k5start` is used to obtain Kerberos credentials from a client keytab.  If set, --ccache must also be set.  Requires support from the GSSAPI and Kerberos libraries.',
+        type=pathlib.Path,
+    )
 argp.add_argument('name',
     help='The DNS name to update, such as `example.stanford.edu`.',
 )
@@ -148,10 +168,19 @@ warn = logger.warning
 info = logger.info
 debug = logger.debug
 
+# Parse custom Kerberos credentials config.
 @dataclasses.dataclass()
 class KrbCreds:
-    ccache: pathlib.Path | str
+    ccache: str
     client_keytab: pathlib.Path | None
+CREDS: KrbCreds | None = None
+if HAS_CREDENTIAL_STORE:
+    debug('We have the Credential Store Extensions')
+    if args.ccache is not None or args.keytab is not None:
+        CREDS = KrbCreds(
+            ccache=args.ccache,
+            client_keytab=args.keytab,
+        )
 
 DNSUPDATE_SERVER: str = args.nsupdate
 DNSUPDATE_PORT: int = args.port
@@ -159,7 +188,6 @@ DNSUPDATE_TIMEOUT: float = args.timeout
 TARGET_NAME: dns.name.Name = dns.name.from_text(args.name)
 TTL: int = 60
 CHALLENGE: str = args.challenge
-CREDS: KrbCreds | None = None
 dns_queries_on_udp = args.udp
 
 # Set up a Resolver
@@ -214,7 +242,7 @@ else:
             usage='initiate',
             store={
                 'client_keytab': str(CREDS.client_keytab),
-                'ccache': str(CREDS.ccache)
+                'ccache': CREDS.ccache,
             },
         )
     except NotImplementedError:
