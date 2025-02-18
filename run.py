@@ -70,7 +70,6 @@ import argparse
 import base64
 import dataclasses
 import datetime
-import gssapi
 import logging
 import pathlib
 import secrets
@@ -93,20 +92,15 @@ import gssapi
 # local imports
 import clients.query
 import clients.resolver
+import clients.tkey
 import clients.exceptions
-
-# Does our GSSAPI have the Credential Store Extensions?
-if 'acquire_cred_from' in dir(gssapi.raw):
-    HAS_CREDENTIAL_STORE=True
-else:
-    HAS_CREDENTIAL_STORE=False
 
 # Process command-line arguments
 argp = argparse.ArgumentParser(
     prog='Stanford ACME DNS Updater',
     epilog=(
         'Your GSSAPI does ' + 
-        ('' if HAS_CREDENTIAL_STORE else 'not ') +
+        ('' if clients.tkey.HAS_CREDENTIAL_STORE else 'not ') +
         'support the Credential Store Extensions.'
     )
 )
@@ -136,7 +130,7 @@ argp.add_argument('--verbose',
     help='Enable verbose logging.',
     action='store_true',
 )
-if HAS_CREDENTIAL_STORE:
+if clients.tkey.HAS_CREDENTIAL_STORE:
     argp.add_argument('--ccache',
         help='Use a specific Kerberos credentials cache.  Default is to use what is defined in the environment.  Requires support from the GSSAPI and Kerberos libraries.',
     )
@@ -169,15 +163,11 @@ info = logger.info
 debug = logger.debug
 
 # Parse custom Kerberos credentials config.
-@dataclasses.dataclass()
-class KrbCreds:
-    ccache: str
-    client_keytab: pathlib.Path | None
-CREDS: KrbCreds | None = None
-if HAS_CREDENTIAL_STORE:
+CREDS: clients.tkey.KrbCreds | None = None
+if clients.tkey.HAS_CREDENTIAL_STORE:
     debug('We have the Credential Store Extensions')
     if args.ccache is not None or args.keytab is not None:
-        CREDS = KrbCreds(
+        CREDS = clients.tkey.KrbCreds(
             ccache=args.ccache,
             client_keytab=args.keytab,
         )
