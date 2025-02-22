@@ -80,9 +80,11 @@ class ResolverClient():
 		self._resolver = dns.resolver.Resolver(configure=True)
 		self._resolver.cache = dns.resolver.Cache(cleaning_interval=CACHE_CLEAN_INTERVAL)
 		self._resolver.retry_servfail = True
+		self._resolver.lifetime = RESOLVER_TIMEOUT
 
 		self._resolver_nocache = dns.resolver.Resolver(configure=True)
 		self._resolver.retry_servfail = True
+		self._resolver.lifetime = RESOLVER_TIMEOUT
 
 	def get_ip(self,
 		query: dns.name.Name | str,
@@ -131,7 +133,6 @@ class ResolverClient():
 				name=query,
 				family=family,
 				search=search,
-				lifetime=RESOLVER_TIMEOUT,
 			)
 			addresses = list(answers.addresses())
 		except (
@@ -206,7 +207,6 @@ class ResolverClient():
 				rdclass=dns.rdataclass.IN,
 				rdtype=dns.rdatatype.TXT,
 				search=search,
-				lifetime=RESOLVER_TIMEOUT,
 				raise_on_no_answer=False,
 			)
 		except (
@@ -298,7 +298,6 @@ class ResolverClient():
 				qname=query,
 				rdtype=dns.rdatatype.SOA,
 				search=False,
-				lifetime=RESOLVER_TIMEOUT,
                 raise_on_no_answer=False,
 			)
 		except (
