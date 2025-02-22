@@ -25,6 +25,7 @@ DNS lookups that we need to do:
 """
 
 # stdlib imports
+import codecs
 import logging
 import socket
 
@@ -34,6 +35,7 @@ import dns.flags
 import dns.message
 import dns.name
 import dns.query
+import dns.rdataclass
 import dns.rdatatype
 import dns.resolver
 import dns.tsig
@@ -154,6 +156,97 @@ class ResolverClient():
 
 		debug(f"Found {len(addresses)} result(s)")
 		return addresses
+
+	def get_txt(self,
+		query: dns.name.Name | str,
+		cached: bool = True,
+		search: bool = True,
+	) -> list[bytes | tuple[bytes]]:
+		"""Return TXT records for a name.
+
+		Do an TXT query and return the results.
+
+		TXT records do not have a defined encoding.  The work of decoding is
+		left up to the client.  In this method's description, "strings" means
+		"strings of bytes".
+
+		A single TXT record may contain multiple strings.  If a TXT record
+		contains a single string, that TXT record's corresponding list entry
+		will contain a single bytes object.  Otherwise, the corresponding list
+		entry will contain a tuple of bytes objects.
+
+		Results are returned in the order provided by the DNS server.
+
+		:param query: The DNS name to look up.
+
+		:param cached: If True, use cached lookups.
+
+		:param search: If True, use any configured search domains.
+
+		:returns: The name of the zone containing the given FQDN.
+
+		:raises ResolverError: There was a problem looking up the name.  Maybe you can retry?
+
+		:raises ResolverErrorPermanent: There was a permanent problem doing your DNS lookup.
+		"""
+
+		debug(
+			f"Resolver running get_txt for {query} with " +
+			('cached ' if cached else '') +
+			('search' if search else '')
+		)
+
+		# Do we use our caching resolver, or not?
+		resolver = (self._resolver if cached is True else self._resolver_nocache)
+
+		# Do the lookup!
+		try:
+			reply = resolver.resolve(
+				qname=query,
+				rdclass=dns.rdataclass.IN,
+				rdtype=dns.rdatatype.TXT,
+				search=search,
+				lifetime=RESOLVER_TIMEOUT,
+				raise_on_no_answer=False,
+			)
+		except (
+			dns.resolver.NXDOMAIN,
+		):
+			warning(f"NXDOMAIN for {query}")
+			return list()
+		except (
+			dns.resolver.NoNameservers,
+			dns.resolver.LifetimeTimeout,
+		) as e:
+			exception("Either NoNameservers or LifetimeTimeout for {query}")
+			raise ResolverError(
+				'All nameservers returned errors or did not respond.'
+			)
+		except dns.resolver.YXDOMAIN:
+			exception(f"YXDOMAIN for {query}")
+			raise ResolverErrorPermanent(
+				'A YXDOMAIN error happened.  What?!'
+			)
+
+		# If we did not get any answers, that's OK.
+		if reply.rrset is None:
+			debug(f"Found no TXT records for {query}")
+			return list()
+
+		# Extract the strings from the list of results.
+		# At this point, we have a list of tuples.
+		text_tuples = list(
+			map(lambda x: x.strings, reply.rrset)
+		)
+
+		# Replace all single-item tuples with their single item.
+		# This gives us a list containing either bytes or tuples of bytes.
+		# This is what we return to the client!
+		debug(f"Found {len(text_tuples)} result(s)")
+		return list(
+			(entries if len(entries) > 1 else entries[0])
+			for entries in text_tuples
+		)
 
 	def get_zone_name(self,
 		query: dns.name.Name | str,
