@@ -303,7 +303,8 @@ class ResolverClient():
 		except (
 			dns.resolver.NXDOMAIN,
 		):
-			warning(f"NXDOMAIN or no answer for {query}")
+			warning(f"NXDOMAIN for {query}")
+			raise ResolverErrorPermanent(f"NXDOMAIN for {query}")
 		except (
 			dns.resolver.NoNameservers,
 			dns.resolver.LifetimeTimeout,
