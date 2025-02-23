@@ -38,6 +38,14 @@ class ResolverErrorPermanent(ResolverError):
 	"""
 	pass
 
+class ResolverErrorCDName(ResolverErrorPermanent):
+    """A CNAME or DNAME was encountered during a DNS lookup.
+
+    For some lookups, we do not want to follow CNAME or DNAME records.  Such a
+    record was encountered during your requested lookup.
+    """
+    pass
+
 class NoServers(ClientError):
 	"""There were no more servers to try."""
 	pass
@@ -51,6 +59,7 @@ __all__ = (
 	'ClientErrorTemporary',
 	'ResolverError',
 	'ResolverErrorPermanent',
+	'ResolverErrorCDName',
 	'NoServers',
 	'DNSError',
 )

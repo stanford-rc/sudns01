@@ -28,6 +28,7 @@ DNS lookups that we need to do:
 import codecs
 import logging
 import socket
+from typing import NoReturn
 
 # PyPi imports
 import dns.exception
@@ -162,6 +163,7 @@ class ResolverClient():
 		query: dns.name.Name | str,
 		cached: bool = True,
 		search: bool = True,
+		raise_on_cdname: bool = True,
 	) -> list[bytes | tuple[bytes]]:
 		"""Return TXT records for a name.
 
@@ -183,6 +185,8 @@ class ResolverClient():
 		:param cached: If True, use cached lookups.
 
 		:param search: If True, use any configured search domains.
+
+		:param raise_on_cdname: If True, if the lookup of query results in following a CNAME or DNAME, raise an exception.  Otherwise, do a lookup of the query's parent.
 
 		:returns: The name of the zone containing the given FQDN.
 
@@ -228,6 +232,12 @@ class ResolverClient():
 				'A YXDOMAIN error happened.  What?!'
 			)
 
+		# Do our CNAME/DNAME check
+		self._check_has_cdname(
+			answer=reply,
+			raise_on_cdname=raise_on_cdname,
+		)
+
 		# If we did not get any answers, that's OK.
 		if reply.rrset is None:
 			debug(f"Found no TXT records for {query}")
@@ -251,6 +261,7 @@ class ResolverClient():
 	def get_zone_name(self,
 		query: dns.name.Name | str,
 		cached: bool = True,
+		raise_on_cdname: bool = True,
 	) -> dns.name.Name:
 		"""Return the zone name for a FQDN.
 
@@ -273,17 +284,22 @@ class ResolverClient():
 
 		:param cached: If True, use cached lookups.
 
+		:param raise_on_cdname: If True, if the lookup of query results in following a CNAME or DNAME, raise an exception.  Otherwise, do a lookup of the query's parent.
+
 		:returns: The name of the zone containing the given FQDN.
 
 		:raises ValueError: The name you gave is not "absolute" (it's not a FQDN).
 
 		:raises ResolverError: There was a problem looking up the name.  Maybe you can retry?
 
+		:raises ResolverErrorCDName: A CNAME or DNAME was encountered during the lookup.
+
 		:raises ResolverErrorPermanent: There was a permanent problem doing your DNS lookup.
 		"""
 
 		debug(
 			f"Resolver running get_soa for {query} with " +
+			('raise_on_cdname ' if raise_on_cdname else '') +
 			('cached ' if cached else '')
 		)
 		if isinstance(query, dns.name.Name) and not query.is_absolute():
@@ -319,6 +335,25 @@ class ResolverClient():
 				'A YXDOMAIN error happened.  What?!'
 			)
 
+		# Check if we got a CNAME or DNAME in the response.
+		# If we did, we might *or* might not want to raise the exception.
+		try:
+			self._check_has_cdname(
+				answer=answer,
+				raise_on_cdname=True
+			)
+		except ResolverErrorCDName:
+			if raise_on_cdname:
+				raise
+			else:
+				parent_query = answer.response.question[0].name.parent()
+				info(f"Trying a zone lookup for parent {parent_query}")
+				return self.get_zone_name(
+					query=parent_query,
+					cached=cached,
+					raise_on_cdname=raise_on_cdname,
+				)
+
         # If we got multiple authority records, make sure they're the same name.
 		debug(f"Found {len(answer.response.authority)} result(s)")
 		if len(answer.response.authority) == 0:
@@ -340,3 +375,52 @@ class ResolverClient():
 				)
 			else:
 				return names.pop()
+
+	@staticmethod
+	def _check_has_cdname(
+		answer: dns.resolver.Answer,
+		raise_on_cdname: bool,
+	) -> bool | NoReturn:
+		"""Did the resolver end up taking us through a CNAME or DNAME?
+
+		For example, "www.stanford.edu" is currently a CNAME to
+		pantheon-systems.map.fastly.net., so we'd end up getting the SOA for
+		"fastly.net", which is not what we want.  Check to see if our answer
+		contains any CNAMEs.  If it does, we need to move our SOA query 'up'
+		one level (for example, from "www.stanford.edu" to "stanford.edu".
+
+		:param answer: The DNS resolver answer to inspect.
+
+		:param raise_on_cdname: If a CNAME or DNAME is found, should we raise an exception?
+
+		:returns: True if a CNAME or DNAME was found, and if raise_on_cdname is False; else False.
+		"""
+		redirects_found = 0
+
+		# Check for any CNAMEs or DNAMEs, and count/log them
+		if len(answer.response.answer) > 0:
+			for response_answer in answer.response.answer:
+				if response_answer.rdtype in (
+					dns.rdatatype.CNAME,
+					dns.rdatatype.DNAME,
+				):
+					if raise_on_cdname:
+						cname_dname_log = warning
+					else:
+						cname_dname_log = info
+					cname_dname_log(
+						f"Found {response_answer.rdtype.name} to {response_answer[0]} in response"
+					)
+					redirects_found += 1
+
+		# Decide if we need to take action.
+		if redirects_found > 0:
+			# Do we fail, or do we search one level up?
+			if raise_on_cdname:
+				raise ResolverErrorCDName(
+					f"Lookup of {answer.response.question} returned at least one CNAME or DNAME."
+				)
+			else:
+				return True
+		else:
+			return False
