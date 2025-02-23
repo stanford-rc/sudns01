@@ -250,8 +250,49 @@ except NotImplementedError:
 
 # Do cleanup first, before issuing our challenge
 if args.cleanup2 is not None:
-    # TODO
-    raise NotImplementedError
+	old_challenges = dnslookup.get_txt(acme_challenge_name)
+	if len(old_challenges) == 0:
+		debug(f"No challenge records to clean up for {acme_challenge_name}")
+	for old_challenge in old_challenges:
+		# if old_challenge is not a tuple, make it a tuple
+		if isinstance(old_challenge, tuple):
+			old_challenge_tuple = old_challenge
+		else:
+			old_challenge_tuple = (old_challenge,)
+
+		# To ensure log messages print, make a tuple of strings.
+		old_challenge_str = tuple(
+			x.decode('ascii', 'backslashreplace')
+			for x in old_challenge_tuple
+		)
+		info(f"Cleaning up old challenge {old_challenge_str}")
+
+		# Construct a TXT record to target for deletion
+		old_challenge_rdata = dns.rdtypes.ANY.TXT.TXT(
+			rdclass=dns.rdataclass.IN,
+			rdtype=dns.rdatatype.TXT,
+			strings=old_challenge_tuple,
+		)
+
+		# Construct our deletion request
+		old_challenge_delete = dns.update.UpdateMessage(
+			zone=target_domain,
+			rdclass=dns.rdataclass.IN,
+			**signer.dnspython_args,
+		)
+		old_challenge_delete.delete(
+			acme_challenge_name_relative,
+			old_challenge_rdata,
+		)
+
+		# Send out the request.  If we get an exception, log a warning, but
+		# otherwise continue.
+		try:
+			dns_delete_response = dnsquery.query(old_challenge_delete)
+		except clients.exceptions.NoServers:
+			warn(f"Ran out of DNS servers to try, while trying to clean up {old_challenge_str}")
+		except clients.exceptions.DNSError:
+			warn(f"DNS error - hopefully temporary, while trying to clean up {old_challenge_str}")
 
 # Prepare our challenge record
 # Note that TXT records are tuples of byte strings, with no specific encoding.
