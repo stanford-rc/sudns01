@@ -354,27 +354,34 @@ class ResolverClient():
 					raise_on_cdname=raise_on_cdname,
 				)
 
+		# We can find SOA records in two places:
+		# * If we queried the zone, we'll get our SOA in the Answer section.
+		# * Otherwise, we'll get it in the Authoirty section.
+		authority_records: set[dns.name.Name] = set()
+
+		# Start by loading in all authority record names
+		debug(f"Found {len(answer.response.authority)} SOA records in Authority section")
+		authority_records.update(
+			authority.name for authority in answer.response.authority
+		)
+
+		# Next, load in all SOA records in the answer
+		for answer_record in answer.response.answer:
+			if answer_record.rdtype is dns.rdatatype.SOA:
+				debug(f"Found a SOA record in the Answer section!")
+				authority_records.add(answer_record.name)
+
         # If we got multiple authority records, make sure they're the same name.
-		debug(f"Found {len(answer.response.authority)} result(s)")
-		if len(answer.response.authority) == 0:
+		if len(authority_records) == 0:
 			raise ResolverError(
 				f"No authority found for {query}"
 			)
-		elif len(answer.response.authority) == 1:
-			return answer.response.authority[0].name
+		elif len(authority_records) == 1:
+			return authority_records.pop()
 		else:
-			# dns.name.Name objects with the same name hash to the same value.
-			# So, if you add the same names to a set, your set will end up with
-			# only one item!
-			names: set[dns.name.Name] = set()
-			for authority in answer.response.authority:
-				names.add(authority.name)
-			if len(names) > 1:
-				raise KeyError(
-					f"Multiple authority names returned: {names}"
-				)
-			else:
-				return names.pop()
+			raise KeyError(
+				f"Multiple authority names returned: {authority_records}"
+			)
 
 	@staticmethod
 	def _check_has_cdname(
