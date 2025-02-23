@@ -9,3 +9,6 @@ __pycache__
 # editor stuff
 ~*
 *.swp
+
+# test stuff
+.coverage
