@@ -111,14 +111,6 @@ def test_get_zone_name_yxdomain() -> None:
 	# TODO
 	pass
 
-def test_get_zone_name_no_authority() -> None:
-	# TODO
-	pass
-
-def test_get_zone_name_multiple_authority() -> None:
-	# TODO
-	pass
-
 def test_get_zone_name_noresponse() -> None:
 	with pytest.raises(clients.exceptions.ResolverError):
 		results = bad_resolver.get_zone_name('www.stanford.edu')
