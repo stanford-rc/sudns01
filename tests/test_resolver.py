@@ -34,6 +34,18 @@ bad_resolver = clients.resolver.ResolverClient()
 bad_resolver._resolver = bad_resolver_resolver
 bad_resolver._resolver_nocache = bad_resolver_resolver
 
+# Set up a resolver client pointing to a local test DNS server.
+# NOTE: Only use this resolver if the "dns" mark is set for pytest, and (of
+# course) if the DNS server is actually available!
+local_resolver_resolver = dns.resolver.Resolver(configure=False)
+local_resolver_resolver.nameservers = ['127.0.0.1']
+local_resolver_resolver.port = 18853
+local_resolver_resolver.timeout = 0.1
+local_resolver_resolver.lifetime = 0.1
+local_resolver = clients.resolver.ResolverClient()
+local_resolver._resolver = local_resolver_resolver
+local_resolver._resolver_nocache = local_resolver_resolver
+
 def test_get_ip_good() -> None:
 	results = resolver.get_ip('web.stanford.edu')
 
@@ -48,9 +60,10 @@ def test_get_ip_nxdomain() -> None:
 	# .invalid comes from RFC 2606
 	assert len(results) == 0
 
-def text_get_ip_yxdomain() -> None:
-	# TODO
-	pass
+@pytest.mark.dns
+def test_get_ip_yxdomain() -> None:
+    with pytest.raises(clients.exceptions.ResolverErrorPermanent):
+        results = local_resolver.get_ip('1234567890.1234567890.1234567890.1234567890.1234567890.d.localdomain')
 
 def test_get_ip_noresponse() -> None:
 	with pytest.raises(clients.exceptions.ResolverError):
@@ -66,9 +79,10 @@ def test_get_txt_nxdomain() -> None:
 	results = resolver.get_txt('example.invalid')
 	assert len(results) == 0
 
+@pytest.mark.dns
 def test_get_txt_yxdomain() -> None:
-	# TODO
-	pass
+    with pytest.raises(clients.exceptions.ResolverErrorPermanent):
+        results = local_resolver.get_txt('1234567890.1234567890.1234567890.1234567890.1234567890.d.localdomain')
 
 def test_get_txt_noresponse() -> None:
 	with pytest.raises(clients.exceptions.ResolverError):
@@ -107,9 +121,10 @@ def test_get_zone_name_nxdomain() -> None:
 	with pytest.raises(clients.exceptions.ResolverErrorPermanent):
 		assert resolver.get_zone_name('example.invalid')
 
+@pytest.mark.dns
 def test_get_zone_name_yxdomain() -> None:
-	# TODO
-	pass
+    with pytest.raises(clients.exceptions.ResolverErrorPermanent):
+        results = local_resolver.get_zone_name('1234567890.1234567890.1234567890.1234567890.1234567890.d.localdomain')
 
 def test_get_zone_name_noresponse() -> None:
 	with pytest.raises(clients.exceptions.ResolverError):
