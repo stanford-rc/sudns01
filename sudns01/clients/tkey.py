@@ -372,7 +372,7 @@ class GSSTSig():
 		self._closed = True
 
 	def __del__(self) -> None:
-		if not self.closed():
+		if not self.closed:
 			self.close()
 
 	@property
