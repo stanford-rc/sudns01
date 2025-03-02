@@ -247,7 +247,10 @@ def main_common(
 	# * The _acme-challenge FQDN
 	# * The underlying zone name
 	# * The _acme-challenge name relative to the zone name
-	target_domain = dnslookup.get_zone_name(TARGET_NAME)
+	target_domain = dnslookup.get_zone_name(
+		TARGET_NAME,
+		raise_on_cdname=False,
+	)
 	ACME_CHALLENGE_LABEL = dns.name.Name(labels=('_acme-challenge',))
 	acme_challenge_name = ACME_CHALLENGE_LABEL.concatenate(TARGET_NAME)
 	acme_challenge_name_relative = acme_challenge_name.relativize(target_domain)
@@ -289,7 +292,10 @@ def main_common(
 
 	# Do cleanup first, before issuing our challenge
 	if args.cleanup2 is not None:
-		old_challenges = dnslookup.get_txt(acme_challenge_name)
+		old_challenges = dnslookup.get_txt(
+			acme_challenge_name,
+			raise_on_cdname=False,
+		)
 		if len(old_challenges) == 0:
 			debug(f"No challenge records to clean up for {acme_challenge_name}")
 		for old_challenge in old_challenges:
