@@ -1,4 +1,4 @@
-#vim: ts=4 sw=4 noet
+# vim: ts=4 sw=4 noet
 
 # Copyright 2025 The Board of Trustees of the Leland Stanford Junior University
 #

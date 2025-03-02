@@ -1,4 +1,4 @@
-#vim: ts=4 sw=4 noet
+# vim: ts=4 sw=4 noet
 
 # These are the exceptions that the clients can throw.
 
