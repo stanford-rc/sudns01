@@ -340,7 +340,7 @@ class ResolverClient():
 		try:
 			self._check_has_cdname(
 				answer=answer,
-				raise_on_cdname=True
+				raise_on_cdname=raise_on_cdname,
 			)
 		except ResolverErrorCDName:
 			if raise_on_cdname:
