@@ -5,6 +5,7 @@ pyvenv.cfg
 
 # python stuff
 __pycache__
+sudns01.egg-info
 
 # editor stuff
 ~*
