@@ -1,5 +1,5 @@
 #!python3
-#vim: ts=4 sw=4 noet
+# vim: ts=4 sw=4 noet
 
 # This is a demo script to show how ACME DNS-01 challenge records can be pushed
 # to Stanford DNS using the GSSAPI/Kerberos authentication with host keytabs.
