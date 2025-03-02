@@ -71,6 +71,7 @@ import binascii
 import logging
 import pathlib
 import sys
+import time
 from typing import NoReturn
 
 # PyPi imports
@@ -237,7 +238,7 @@ def main_common(
 	DNSUPDATE_TIMEOUT: float = args.timeout
 	TARGET_NAME: dns.name.Name = dns.name.from_text(args.name)
 	TTL: int = 60
-	CHALLENGE: str = args.challenge
+	CHALLENGE: bytes = args.challenge.encode('ASCII')
 	dns_queries_on_udp = args.udp
 
 	# Set up a Resolver
@@ -347,7 +348,7 @@ def main_common(
 		rdclass=dns.rdataclass.IN,
 		rdtype=dns.rdatatype.TXT,
 		strings=(
-			CHALLENGE.encode('ASCII'),
+			CHALLENGE,
 		),
 	)
 
@@ -368,6 +369,7 @@ def main_common(
 	# Send out the request
 	try:
 		dns_add_response = dnsquery.query(challenge_add)
+		info('DNS record uploaded.  Sleeping before checking…')
 	except sudns01.clients.exceptions.NoServers:
 		print("Ran out of DNS servers to try")
 		sys.exit(1)
@@ -375,8 +377,33 @@ def main_common(
 		print("DNS error - hopefully temporary!")
 		sys.exit(2)
 
+	# Wait for the record to appear via the system resolver
+	record_found = False
+	while not record_found:
+		# Wait for a minute
+		time.sleep(60)
+
+		# Do an uncached TXT lookup
+		txt_records = dnslookup.get_txt(
+			query=acme_challenge_name,
+			cached=False,
+			raise_on_cdname=False,
+		)
+
+		# Our output may contain tuples, so we can't do a simple `in` check
+		for txt_record in txt_records:
+			if isinstance(txt_record, bytes):
+				if txt_record == CHALLENGE:
+					record_found = True
+					break
+
+		if record_found:
+			info('Challenge found in system DNS')
+		else:
+			debug('Challenge not found.  Sleeping…')
+
 	# Wait to do the deletion
-	input('Press Return to delete the record')
+	input('Record found in system DNS!  Press Return to delete the record')
 
 	# Remove the new ACME Challenge record
 
