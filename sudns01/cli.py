@@ -78,6 +78,7 @@ from typing import NoReturn
 # PyPi imports
 import dns.message
 import dns.name
+import dns.rcode
 import dns.rdtypes.ANY.TXT
 import dns.update
 
@@ -371,6 +372,9 @@ def main_common(
 				warn(f"Ran out of DNS servers to try, while trying to clean up {old_challenge_str}")
 			except sudns01.clients.exceptions.DNSError:
 				warn(f"DNS error - hopefully temporary, while trying to clean up {old_challenge_str}")
+			if dns_delete_response.rcode() != dns.rcode.NOERROR:
+				print(f"When trying to clean up a TXT record '{old_challenge_str}', received unexpected error {dns_delete_response.rcode().name} from DNS server")
+				sys.exit(2)
 
 	# Prepare our challenge record
 	# Note that TXT records are tuples of byte strings, with no specific encoding.
@@ -407,6 +411,9 @@ def main_common(
 		sys.exit(1)
 	except sudns01.clients.exceptions.DNSError:
 		print("DNS error - hopefully temporary!")
+		sys.exit(2)
+	if dns_add_response.rcode() != dns.rcode.NOERROR:
+		print(f"When trying to add TXT record, received unexpected error {dns_add_response.rcode().name} from DNS server")
 		sys.exit(2)
 
 	# Close our GSS-TSIG signer.
