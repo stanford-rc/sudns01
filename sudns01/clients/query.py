@@ -35,7 +35,7 @@ import dns.tsig
 import dns.update
 
 # Local imports
-from clients.exceptions import *
+from sudns01.clients.exceptions import *
 
 # Set up logging
 logger = logging.getLogger(__name__)

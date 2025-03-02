@@ -32,8 +32,8 @@ import dns.tsig
 import gssapi
 
 # local imports
-import clients.exceptions
-import clients.query
+import sudns01.clients.exceptions
+import sudns01.clients.query
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -93,7 +93,7 @@ class GSSTSig():
 	:param krb5_service: The Kerberos 5 service name to use when obtaining a Kerberos ticket for nsupdate.  This is normally "DNS".
 	"""
 
-	_dnsquery: clients.query.QueryClient
+	_dnsquery: sudns01.clients.query.QueryClient
 	_server: str
 	_key: dns.tsig.Key
 	_keyname: dns.name.Name
@@ -101,7 +101,7 @@ class GSSTSig():
 
 	def __init__(
 		self,
-        dnsquery: clients.query.QueryClient,
+        dnsquery: sudns01.clients.query.QueryClient,
 		server: str,
 		creds: KrbCreds | None = None,
 		krb5_service: str = 'DNS',

@@ -43,7 +43,7 @@ import dns.tsig
 import dns.update
 
 # Local imports
-from clients.exceptions import *
+from sudns01.clients.exceptions import *
 
 RESOLVER_TIMEOUT: int = 10
 """What timeout do we use?

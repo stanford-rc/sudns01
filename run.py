@@ -79,17 +79,17 @@ import dns.rdtypes.ANY.TXT
 import dns.update
 
 # local imports
-import clients.query
-import clients.resolver
-import clients.tkey
-import clients.exceptions
+import sudns01.clients.query
+import sudns01.clients.resolver
+import sudns01.clients.tkey
+import sudns01.clients.exceptions
 
 # Process command-line arguments
 argp = argparse.ArgumentParser(
     prog='Stanford ACME DNS Updater',
     epilog=(
         'Your GSSAPI does ' + 
-        ('' if clients.tkey.HAS_CREDENTIAL_STORE else 'not ') +
+        ('' if sudns01.clients.tkey.HAS_CREDENTIAL_STORE else 'not ') +
         'support the Credential Store Extensions.'
     )
 )
@@ -128,7 +128,7 @@ argp.add_argument('--verbose',
     help='Enable verbose logging.',
     action='store_true',
 )
-if clients.tkey.HAS_CREDENTIAL_STORE:
+if sudns01.clients.tkey.HAS_CREDENTIAL_STORE:
     argp.add_argument('--ccache',
         help='Use a specific Kerberos credentials cache.  Default is to use what is defined in the environment.  Requires support from the GSSAPI and Kerberos libraries.',
     )
@@ -184,11 +184,11 @@ if args.cleanup2 is not None:
         info('Will cleanup other ACME challenges')
 
 # Parse custom Kerberos credentials config.
-CREDS: clients.tkey.KrbCreds | None = None
-if clients.tkey.HAS_CREDENTIAL_STORE:
+CREDS: sudns01.clients.tkey.KrbCreds | None = None
+if sudns01.clients.tkey.HAS_CREDENTIAL_STORE:
     debug('We have the Credential Store Extensions')
     if args.ccache is not None or args.keytab is not None:
-        CREDS = clients.tkey.KrbCreds(
+        CREDS = sudns01.clients.tkey.KrbCreds(
             ccache=args.ccache,
             client_keytab=args.keytab,
         )
@@ -202,7 +202,7 @@ CHALLENGE: str = args.challenge
 dns_queries_on_udp = args.udp
 
 # Set up a Resolver
-dnslookup = clients.resolver.ResolverClient()
+dnslookup = sudns01.clients.resolver.ResolverClient()
 
 # From the target name (a FQDN), we need to work out:
 # * The _acme-challenge FQDN
@@ -218,10 +218,10 @@ info(f"We will be modifying label {acme_challenge_name_relative}")
 # Get the IPs for our DNS server
 try:
     dnsupdate_server_ips = dnslookup.get_ip(DNSUPDATE_SERVER)
-except clients.exceptions.ResolverError as e:
+except sudns01.clients.exceptions.ResolverError as e:
     print(f"Temporary error looking up {DNSUPDATE_SERVER}: {e}")
     sys.exit(2)
-except clients.exceptions.ResolverErrorPermanent as e:
+except sudns01.clients.exceptions.ResolverErrorPermanent as e:
     print(f"Permanent error looking up {DNSUPDATE_SERVER}: {e}")
     sys.exit(1)
 if len(dnsupdate_server_ips) == 0:
@@ -229,7 +229,7 @@ if len(dnsupdate_server_ips) == 0:
     sys.exit(1)
 
 # Create the client for sending DNS queries
-dnsquery = clients.query.QueryClient(
+dnsquery = sudns01.clients.query.QueryClient(
     ips=dnsupdate_server_ips,
     port=DNSUPDATE_PORT,
     timeout=DNSUPDATE_TIMEOUT,
@@ -238,7 +238,7 @@ dnsquery = clients.query.QueryClient(
 
 # Set up DNS signing
 try:
-    signer = clients.tkey.GSSTSig(
+    signer = sudns01.clients.tkey.GSSTSig(
         dnsquery=dnsquery,
         server=DNSUPDATE_SERVER,
         creds=CREDS,
@@ -289,9 +289,9 @@ if args.cleanup2 is not None:
 		# otherwise continue.
 		try:
 			dns_delete_response = dnsquery.query(old_challenge_delete)
-		except clients.exceptions.NoServers:
+		except sudns01.clients.exceptions.NoServers:
 			warn(f"Ran out of DNS servers to try, while trying to clean up {old_challenge_str}")
-		except clients.exceptions.DNSError:
+		except sudns01.clients.exceptions.DNSError:
 			warn(f"DNS error - hopefully temporary, while trying to clean up {old_challenge_str}")
 
 # Prepare our challenge record
@@ -323,10 +323,10 @@ challenge_add.add(
 # Send out the request
 try:
     dns_add_response = dnsquery.query(challenge_add)
-except clients.exceptions.NoServers:
+except sudns01.clients.exceptions.NoServers:
     print("Ran out of DNS servers to try")
     sys.exit(1)
-except clients.exceptions.DNSError:
+except sudns01.clients.exceptions.DNSError:
     print("DNS error - hopefully temporary!")
     sys.exit(2)
 
@@ -349,9 +349,9 @@ challenge_delete.delete(
 # Send out the request
 try:
     dns_delete_response = dnsquery.query(challenge_delete)
-except clients.exceptions.NoServers:
+except sudns01.clients.exceptions.NoServers:
     print("Ran out of DNS servers to try")
     sys.exit(1)
-except clients.exceptions.DNSError:
+except sudns01.clients.exceptions.DNSError:
     print("DNS error - hopefully temporary!")
     sys.exit(2)
