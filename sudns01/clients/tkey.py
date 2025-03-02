@@ -20,6 +20,7 @@ import dataclasses
 import logging
 import pathlib
 import secrets
+import time
 import typing
 
 # PyPi imports
@@ -93,6 +94,7 @@ class GSSTSig():
 	:param krb5_service: The Kerberos 5 service name to use when obtaining a Kerberos ticket for nsupdate.  This is normally "DNS".
 	"""
 
+	_closed: bool
 	_dnsquery: sudns01.clients.query.QueryClient
 	_server: str
 	_key: dns.tsig.Key
@@ -120,6 +122,7 @@ class GSSTSig():
 			f"Instantiating Signer for server {krb5_service}/{server}" +
 			(' with custom creds' if creds is not None else '')
 		)
+		self._closed = False
 
 		# Start by storing our server and Kerberos credentials
 		self._dnsquery = dnsquery
@@ -229,6 +232,8 @@ class GSSTSig():
 
 		:raises clients.exceptions.DNSError: We were able to communicate with the DNS server, but there was an error.
 		"""
+		if self.closed:
+			raise TypeError('This Signer has already been closed!')
 
 		# We'll be doing a lot of work with our GSSAPI context, so grab it.
 		gss_ctx = self.key.secret
@@ -258,7 +263,7 @@ class GSSTSig():
 			algorithm=dns.tsig.GSS_TSIG,
 			inception=0,
 			expiration=0,
-			mode=3,
+			mode=dns.rdtypes.ANY.TKEY.TKEY.GSSAPI_NEGOTIATION,
 			error=dns.rcode.NOERROR,
 			key=gss_step1,
 		)
@@ -300,8 +305,8 @@ class GSSTSig():
 			error('GSSAPI Negotiation incomplete; bailing out')
 			raise NotImplementedError('Only two GSSAPI rounds are supported')
 
-	def __del__(self) -> None:
-		"""Clean 
+	def close(self) -> None:
+		"""Clean up and stop using a signer. 
 
 		This attempts to clean up the TKEY that was created on the DNS seerver,
 		per RFC 3645 §3.2.1.
@@ -309,28 +314,98 @@ class GSSTSig():
 		The GSSAPI context is not cleaned up explicitly.  Per the gssapi
 		package's low-level API, cleanup is handled automatically.
 		"""
-		# TODO
-		pass
+		debug(f"Cleaning GSSTSig for {self._keyname}")
 
+		# We need something from our GSSAPI context
+		gss_ctx = self.key.secret
+
+		# Create a TKEY record with the mode set to 5 (delete key).
+		# There's no clarity on if the inception and expiration times are used
+		# for key-deletions, so set them to now and now-plus-one-minute.
+		# There's also no clarity on what key data is sent, so send nothing.
+		gss_delete_request_tkey = dns.rdtypes.ANY.TKEY.TKEY(
+			rdclass=dns.rdataclass.ANY,
+			rdtype=dns.rdatatype.TKEY,
+			algorithm=dns.tsig.GSS_TSIG,
+			inception=int(time.time()),
+			expiration=int(time.time()) + 60,
+			mode=dns.rdtypes.ANY.TKEY.TKEY.KEY_DELETION,
+			error=dns.rcode.NOERROR,
+			key=b'',
+		)
+
+		# Make our query against our existng key name.
+		# (The keyring etc. will be added later)
+		gss_delete_request = dns.message.make_query(
+			qname=self.keyname,
+			rdclass=dns.rdataclass.ANY,
+			rdtype=dns.rdatatype.TKEY,
+		)
+
+		# Add our TKEY record to the additional portion of the query
+		gss_delete_request_rrset = gss_delete_request.find_rrset(
+			section=dns.message.ADDITIONAL,
+			name=self.keyname,
+			rdclass=dns.rdataclass.ANY,
+			rdtype=dns.rdatatype.TKEY,
+			create=True,
+		)
+		gss_delete_request_rrset.add(gss_delete_request_tkey)
+
+		# Our query message should be signed
+		# (We can't use self.dnspython_args, because this method has the
+		# 'algorithm' parameter name, instead of 'keyalgorithm')
+		gss_delete_request.use_tsig(
+			keyring=self.keyring,
+			keyname=self.keyname,
+			algorithm=dns.tsig.GSS_TSIG,
+		)
+
+		# Send the deletion.  We don't care about DNS-related issues.
+		try:
+			self._dnsquery.query(gss_delete_request)
+		except sudns01.clients.exceptions.ClientError:
+			pass
+
+		# Delete the GSSAPI context and mark our instance as closed.
+		gss_delete_token = gssapi.raw.delete_sec_context(gss_ctx)
+		self._closed = True
+
+	def __del__(self) -> None:
+		self.close()
+
+	@property
+	def closed(self) -> bool:
+		return self._closed
 
 	@property
 	def server(self) -> str:
+		if self.closed:
+			raise TypeError('This Signer has already been closed!')
 		return self._server
 
 	@property
 	def key(self) -> dns.tsig.Key:
+		if self.closed:
+			raise TypeError('This Signer has already been closed!')
 		return self._key
 
 	@property
 	def keyname(self) -> dns.name.Name:
+		if self.closed:
+			raise TypeError('This Signer has already been closed!')
 		return self._keyname
 
 	@property
 	def keyname_str(self) -> str:
+		if self.closed:
+			raise TypeError('This Signer has already been closed!')
 		return str(self.keyname)
 
 	@property
 	def keyring(self) -> dns.tsig.GSSTSigAdapter:
+		if self.closed:
+			raise TypeError('This Signer has already been closed!')
 		return self._keyring
 
 	class DNSPythonArgs(typing.TypedDict):
@@ -340,6 +415,8 @@ class GSSTSig():
 
 	@property
 	def dnspython_args(self) -> DNSPythonArgs:
+		if self.closed:
+			raise TypeError('This Signer has already been closed!')
 		return {
 			'keyring': self.keyring,
 			'keyname': self.keyname,

@@ -409,6 +409,20 @@ def main_common(
 		print("DNS error - hopefully temporary!")
 		sys.exit(2)
 
+	# Close our GSS-TSIG signer.
+	#
+	# Per RFC 2930 §4.2 gives the DNS server the ability to dicard keys
+	# whenever they want.  §5.1, we'd be told so by having a TKEY record in the
+	# Additional section of the answer, with the "mode" field set to 5 (delete
+	# key).  By getting rid of the key now, we avoid having to check for that
+	# situation.
+	#
+	# Also, since our keys are based on GSSAPI/Kerberos, the lifetime of the
+	# key is ultimately bound by the lifetime of the underlying Kerberos
+	# ticket.  Deleting the key now lets us avoid having to check into that
+	# ticket's lifetime.
+	signer.close()
+
 	# Wait for the record to appear via the system resolver
 	record_found = False
 	while not record_found:
@@ -438,6 +452,14 @@ def main_common(
 	input('Record found in system DNS!  Press Return to delete the record')
 
 	# Remove the new ACME Challenge record
+
+	# Make a new GSS-TSIG signer, which will be cleaned up when the program ends.
+	signer = sudns01.clients.tkey.GSSTSig(
+		dnsquery=dnsquery,
+		server=DNSUPDATE_SERVER,
+		creds=CREDS,
+
+	)
 
 	# Create the Delete request
 	challenge_delete = dns.update.UpdateMessage(
