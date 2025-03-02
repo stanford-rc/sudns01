@@ -159,8 +159,8 @@ def main_generic() -> NoReturn:
 	)
 	argp_generic.add_argument('--wait',
 		help='The number of minutes we wait between propagation checks.',
-		type=int,
-		defalt=1,
+		type=float,
+		default=1.0,
 	)
 	argp_generic.add_argument('nsupdate',
 		help='The DNS server that handles nsupdate messages.',
@@ -169,9 +169,14 @@ def main_generic() -> NoReturn:
 	# Parse arguments
 	args = argp_generic.parse_args()
 
+	# Make sure the wait time is greater than 15 seconds
+	if args.wait <= (15.0/60.0):
+		print('The wait time must be at least 0.25 minutes (15 seconds)')
+		sys.exit(1)
+
 	# Make a wait function
 	def wait_func() -> None:
-		time.sleep(args.wait * 60)
+		time.sleep(args.wait * 60.0)
 
 	# Now do the actual stuff!
 	main_common(
