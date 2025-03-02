@@ -68,6 +68,7 @@
 # stdlib imports
 import argparse
 import binascii
+from collections.abc import Callable
 import logging
 import pathlib
 import sys
@@ -156,12 +157,27 @@ def main_generic() -> NoReturn:
 		help='Force using UDP for DNS queries.  Should never be needed.',
 		action='store_true',
 	)
+	argp_generic.add_argument('--wait',
+		help='The number of minutes we wait between propagation checks.',
+		type=int,
+		defalt=1,
+	)
 	argp_generic.add_argument('nsupdate',
 		help='The DNS server that handles nsupdate messages.',
 	)
 
+	# Parse arguments
+	args = argp_generic.parse_args()
+
+	# Make a wait function
+	def wait_func() -> None:
+		time.sleep(args.wait * 60)
+
 	# Now do the actual stuff!
-	main_common(argp_generic.parse_args())
+	main_common(
+		args,
+		wait=wait_func,
+	)
 	
 # Handle running as sudns01
 def main_stanford() -> NoReturn:
@@ -184,12 +200,23 @@ def main_stanford() -> NoReturn:
 		action='store_true',
 	)
 
+	# Parse arguments
+	args = argp_stanford.parse_args()
+
+	# Make a wait function
+	def wait_func() -> None:
+		time.sleep(60)
+
 	# Now do the actual stuff!
-	main_common(argp_stanford.parse_args())
+	main_common(
+		args,
+		wait=wait_func,
+	)
 
 # Do the common work!
 def main_common(
-    args: argparse.Namespace,
+	args: argparse.Namespace,
+	wait: Callable[[], None],
 ) -> NoReturn:
 	# Do top-level (program-level) logging configuration
 	logging.basicConfig(
@@ -380,8 +407,8 @@ def main_common(
 	# Wait for the record to appear via the system resolver
 	record_found = False
 	while not record_found:
-		# Wait for a minute
-		time.sleep(60)
+		# Wait for some amount of time
+		wait()
 
 		# Do an uncached TXT lookup
 		txt_records = dnslookup.get_txt(
