@@ -395,3 +395,17 @@ class StanfordAuthenticator(BaseAuthenticator):
 			add=add,
 			default_propagation_seconds=default_propagation_seconds,
 		)
+		add('port',
+			help=argparse.SUPPRESS,
+			type=int,
+			default=53,
+		)
+		add('udp',
+			help=argparse.SUPPRESS,
+			type=bool,
+			default=False,
+		)
+		add('nsupdate',
+			help=argparse.SUPPRESS,
+			default='acme-dns.stanford.edu',
+		)
