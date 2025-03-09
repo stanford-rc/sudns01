@@ -17,6 +17,8 @@
 # stdlib imports
 import abc
 import argparse
+import dataclasses
+import importlib.metadata
 import logging
 import pathlib
 from typing import Any, Callable
@@ -28,6 +30,9 @@ import certbot.errors
 import certbot.plugins.dns_common
 
 # local imports
+import sudns01.clients.exceptions
+import sudns01.clients.query
+import sudns01.clients.resolver
 import sudns01.clients.tkey
 
 # Set up logging
@@ -45,6 +50,14 @@ debug = logger.debug
 
 # If we need to stop execution due to a problem, we should raise a
 # certbot.errors.PluginError, which takes one parameter (the message).
+
+# What keys does our conf have?
+@dataclasses.dataclass(repr=False)
+class GSSConf():
+	resolver: sudns01.clients.resolver.ResolverClient | None = None
+	nsupdate: sudns01.clients.query.QueryClient | None = None
+	creds: sudns01.clients.tkey.KrbCreds | None = None
+	signer: sudns01.clients.tkey.GSSTSig | None = None
 
 class BaseAuthenticator(
 	certbot.plugins.dns_common.DNSAuthenticator,
@@ -107,6 +120,19 @@ class BaseAuthenticator(
 	The description is shown to the user at that time.
 	"""
 
+	gssconf: GSSConf
+	"""Storage for our runtime configuration.
+
+	This stores things like our Kerberos configuration, signer, resolver, etc.
+	"""
+
+	config_prefix: str
+	"""Our configuration key prefix.
+
+	Plugin arguments have a prefix, which we need to know in order to fetch
+	arguments for our (real) class.
+	"""
+
 	def __init__(
 		self,
 		*args: Any,
@@ -116,6 +142,43 @@ class BaseAuthenticator(
 
 		# Set up our parent class
 		super().__init__(*args, **kwargs)
+
+		# Set up an empty conf
+		self.gssconf = GSSConf()
+
+		# We need to find the certbot entrypoint name for our class.
+		# Pull the list of certbot plugins
+		ep_found = False
+		entrypoints = importlib.metadata.entry_points(group='certbot.plugins')
+		for ep_name in entrypoints.names:
+			# Load the entrypoint and check if it matches our class
+			if type(self) == entrypoints[ep_name].load():
+				self.config_prefix = ep_name
+				ep_found = True
+				break
+		if not ep_found:
+			raise certbot.errors.PluginError('Could not find our class name during plugin setup.')
+
+		# Convert hyphens in the prefix to underscores
+		self.config_prefix = self.config_prefix.replace('-', '_')
+		debug(f"Using config_prefix {self.config_prefix}")
+
+	def get_config(self,
+		key: str,
+	) -> Any:
+		"""Get a configuration item.
+
+		Uses our `config_prefix` to find an item in program configuration.
+
+		:param key: The key to find.
+
+		:returns: The configuration value.
+
+		:raises AttributeError: The key does not exist.
+		"""
+		derived_key = (self.config_prefix + '_' + key)
+		debug(f"Fetching {derived_key}")
+		return getattr(self.config, derived_key)
 
 	@classmethod
 	def add_parser_arguments(
@@ -192,7 +255,6 @@ class BaseAuthenticator(
 		:returns: A list of the challenges for which we have a response.
 		"""
 		debug(f"In perform with {len(achalls)} challenges.")
-		print(self.config)
 
 		# This is a near-total copy of the code from the same method in
 		# certbot.plugins.dns_common.DNSAuthenticator.  So, why copy it?
