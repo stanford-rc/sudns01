@@ -57,7 +57,7 @@ class GSSConf():
 	resolver: sudns01.clients.resolver.ResolverClient | None = None
 	nsupdate: sudns01.clients.query.QueryClient | None = None
 	creds: sudns01.clients.tkey.KrbCreds | None = None
-	signer: sudns01.clients.tkey.GSSTSig | None = None
+	nsupdate_completed: set[str] = dataclasses.field(default_factory=set)
 
 class BaseAuthenticator(
 	certbot.plugins.dns_common.DNSAuthenticator,
@@ -351,7 +351,7 @@ class BaseAuthenticator(
 			' seconds.'
 		)
 
-		# Set up dnsupdate signing
+		# Log information about our signer
 		dnsupdate_info_str = (
 			'GSSAPI authentication is to ' +
 			'DNS/' + self.get_config('nsupdate').lower() +
@@ -371,16 +371,6 @@ class BaseAuthenticator(
 				dnsupdate_info_str += 'keytab from ' + self.get_config('keytab')
 			dnsupdate_info_str += '.'
 		info(dnsupdate_info_str)
-		try:
-			signer = sudns01.clients.tkey.GSSTSig(
-				dnsquery=self.gssconf.nsupdate,
-				server=self.get_config('nsupdate'),
-				creds=self.gssconf.creds,
-			)
-		except NotImplementedError:
-			raise certbot.errors.PluginError(
-				"Your GSSAPI implementation does not have support for manipulating credential stores.  Try again without the ccache and keytab options."
-			)
 
 	def _perform(self,
 		domain: str,
@@ -415,6 +405,26 @@ class BaseAuthenticator(
 		"""
 		debug(f"In perform for {domain}: {validation_name} = {validation}")
 
+		# Make sure we have a nsupdate and a resolver
+		if self.gssconf.nsupdate is None:
+			error('nsupdate has not been set yet!')
+			raise certbot.errors.PluginError('The Authenticator plugin has not been fully initialized.')
+		if self.gssconf.resolver is None:
+			error('resolver has not been set yet!')
+			raise certbot.errors.PluginError('The Authenticator plugin has not been fully initialized.')
+
+		# Set up our signer
+		try:
+			signer = sudns01.clients.tkey.GSSTSig(
+				dnsquery=self.gssconf.nsupdate,
+				server=self.get_config('nsupdate'),
+				creds=self.gssconf.creds,
+			)
+		except NotImplementedError:
+			raise certbot.errors.PluginError(
+				"Your GSSAPI implementation does not have support for manipulating credential stores.  Try again without the ccache and keytab options."
+			)
+
 		# Do any old-record cleanup, if we're supposed to
 		# TODO
 
@@ -423,9 +433,10 @@ class BaseAuthenticator(
 
 		# Send the request
 		# TODO
+		#self.gssconf.nsupdate_completed.add(domain)
 
 		# Close our current signer
-		# TODO
+		signer.close()
 
 		# Do wait-check loop
 		# TODO
@@ -469,11 +480,34 @@ class BaseAuthenticator(
 		:param validation: The string to add as the value for the TXT record.
 		"""
 		debug(f"In cleanup for {domain}")
-		# Set up a dnsupdate client
+
+		# Make sure we have a nsupdate
+		if self.gssconf.nsupdate is None:
+			error('nsupdate has not been set yet!')
+			raise certbot.errors.PluginError('The Authenticator plugin has not been fully initialized.')
+
+		# Skip doing cleanup if we never did an nsupdate for this domain
+		if domain not in self.gssconf.nsupdate_completed:
+			info(f"No cleanup needed for {domain}")
+			return
+
+		# Set up our signer
+		try:
+			signer = sudns01.clients.tkey.GSSTSig(
+				dnsquery=self.gssconf.nsupdate,
+				server=self.get_config('nsupdate'),
+				creds=self.gssconf.creds,
+			)
+		except NotImplementedError:
+			raise certbot.errors.PluginError(
+				"Your GSSAPI implementation does not have support for manipulating credential stores.  Try again without the ccache and keytab options."
+			)
+
+		# Do the cleanup
 		# TODO
 
-		# Set up dnsupdate signing
-		# TODO
+		# Close the signer
+		signer.close()
 
 class GenericAuthenticator(BaseAuthenticator):
 	"""Authenticator configuration that is not Stanford-specific.
