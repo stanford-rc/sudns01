@@ -147,6 +147,14 @@ class BaseAuthenticator(
 			help=argparse.SUPPRESS,
 			action='store',
 		)
+		if sudns01.clients.tkey.HAS_CREDENTIAL_STORE:
+			add('ccache',
+				help='Use a specific Kerberos credentials cache.  Default is to use what is defined in the environment.  Requires support from the GSSAPI and Kerberos libraries.',
+			)
+			add('keytab',
+				help='Use a specific client keytab to authenticate to the nsupdate server.  Normally a separate program (like `kinit` or `k5start` is used to obtain Kerberos credentials from a client keytab.  If set, --ccache must also be set.  Requires support from the GSSAPI and Kerberos libraries.',
+				type=pathlib.Path,
+			)
 
 	def more_info(self) -> str:
 		debug('In more_info!!!!!')
@@ -387,11 +395,3 @@ class StanfordAuthenticator(BaseAuthenticator):
 			add=add,
 			default_propagation_seconds=default_propagation_seconds,
 		)
-		if sudns01.clients.tkey.HAS_CREDENTIAL_STORE:
-			add('ccache',
-				help='Use a specific Kerberos credentials cache.  Default is to use what is defined in the environment.  Requires support from the GSSAPI and Kerberos libraries.',
-			)
-			add('keytab',
-				help='Use a specific client keytab to authenticate to the nsupdate server.  Normally a separate program (like `kinit` or `k5start` is used to obtain Kerberos credentials from a client keytab.  If set, --ccache must also be set.  Requires support from the GSSAPI and Kerberos libraries.',
-				type=pathlib.Path,
-			)
