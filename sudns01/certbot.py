@@ -126,6 +126,12 @@ class BaseAuthenticator(
 	This stores things like our Kerberos configuration, signer, resolver, etc.
 	"""
 
+	cli_prefix: str
+	"""Our command-line argument prefix.
+
+	Our CLI options will be prefixed by this, followed by a hyphen.
+	"""
+
 	config_prefix: str
 	"""Our configuration key prefix.
 
@@ -153,14 +159,14 @@ class BaseAuthenticator(
 		for ep_name in entrypoints.names:
 			# Load the entrypoint and check if it matches our class
 			if type(self) == entrypoints[ep_name].load():
-				self.config_prefix = ep_name
+				self.cli_prefix = ep_name
 				ep_found = True
 				break
 		if not ep_found:
 			raise certbot.errors.PluginError('Could not find our class name during plugin setup.')
 
 		# Convert hyphens in the prefix to underscores
-		self.config_prefix = self.config_prefix.replace('-', '_')
+		self.config_prefix = self.cli_prefix.replace('-', '_')
 		debug(f"Using config_prefix {self.config_prefix}")
 
 	def get_config(self,
