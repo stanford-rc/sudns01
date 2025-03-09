@@ -69,14 +69,10 @@
 import argparse
 import binascii
 from collections.abc import Callable
-import datetime
-import enum
 import logging
 import pathlib
 import sys
-import time
 from typing import Any, NoReturn
-import zoneinfo
 
 # PyPi imports
 import dns.message
@@ -90,6 +86,7 @@ import sudns01.clients.query
 import sudns01.clients.resolver
 import sudns01.clients.tkey
 import sudns01.clients.exceptions
+import sudns01.wait
 
 # Make a generic argument parser
 argp = argparse.ArgumentParser(
@@ -178,97 +175,16 @@ def main_generic() -> NoReturn:
 		print('The wait time must be at least 0.25 minutes (15 seconds)')
 		sys.exit(1)
 
-	# Make a wait function
-	def wait_func(*ignored) -> None:
-		time.sleep(args.wait * 60.0)
-		return None
+	# Make a waiter
+	waiter = sudns01.wait.FixedWaiter(
+		args.wait * 60.0,
+	)
 
 	# Now do the actual stuff!
 	main_common(
 		args,
-		wait=wait_func,
+		waiter=waiter,
 	)
-
-# For Stanford DNS, how long do we wait?
-us_pacific = zoneinfo.ZoneInfo('US/Pacific')
-class SUWaitState(enum.Enum):
-	BEFORE_REFRESH = 0
-	IN_REFRESH = 1
-
-def stanford_wait_for_refresh(
-	state: SUWaitState | None,
-) -> SUWaitState:
-	stanford_now = datetime.datetime.now(tz=us_pacific)
-	debug(
-		'Entering wait with state ' +
-		('none' if state is None else state.name) +
-		f" and time {stanford_now}"
-	)
-	
-	# Our source for DNS refresh information:
-	# https://web.stanford.edu/group/networking/dist/sunet.reports/dns-update.txt
-	# DNS refresh happens at :05 and :35
-	# Changes appear in DNS "within 10 minutes"
-	# and "certainly … within 20 minutes"
-
-	# Do we not have a wait state?  In that case, we have to figure out where
-	# we are.
-	if state is None:
-		# If we're exactly at :05:00 or :35:00, immediately put us in refresh!
-		if stanford_now.second == 0 and stanford_now.minute in (5, 35):
-			state = SUWaitState.IN_REFRESH
-		else:
-			# Otherwise, wait for the next refresh.
-			state = SUWaitState.BEFORE_REFRESH
-
-	# Now we know what state we're in, we can take appropriate action
-	if state is SUWaitState.BEFORE_REFRESH:
-		# We need to wait until either :05 or :35
-		target_time: datetime.datetime
-		if stanford_now.minute < 5:
-			# Wait until :05 of this hour.
-			target_time = stanford_now.replace(
-				minute=5,
-				second=0,
-				microsecond=0,
-			)
-		elif stanford_now.minute > 5 and stanford_now.minute <= 35:
-			# Wait until :35 of this hour.
-			target_time = stanford_now.replace(
-				minute=35,
-				second=0,
-				microsecond=0,
-			)
-		else:
-			# Wait until :05 of the next hour.
-			target_time = (
-				stanford_now + datetime.timedelta(hours=1)
-			).replace(
-				minute=5,
-				second=0,
-				microsecond=0,
-			)
-
-		# Add one minute to the target time: DNS refresh is not instant.
-		# With our target time, determine how long to wait, then wait.
-		target_time += datetime.timedelta(minutes=1)
-		time_to_wait = target_time - stanford_now
-		debug(f"Target time is {target_time} — waiting for {time_to_wait}")
-		time.sleep(time_to_wait.total_seconds())
-
-		# We now move into the in-refresh state.
-		return SUWaitState.IN_REFRESH
-
-	elif state is SUWaitState.IN_REFRESH:
-		# We've already waited once for a refresh to begin.
-		# So, wait for one minute, then check, then repeat…
-		debug("Sleeping for one minute.")
-		time.sleep(60)
-		return SUWaitState.IN_REFRESH
-
-	else:
-		raise NotImplementedError(f"Unknown wait state {state.name}")
-
 
 # Handle running as sudns01
 def main_stanford() -> NoReturn:
@@ -297,13 +213,13 @@ def main_stanford() -> NoReturn:
 	# Now do the actual stuff!
 	main_common(
 		args,
-		wait=stanford_wait_for_refresh,
+		waiter=sudns01.wait.StanfordWaiter(),
 	)
 
 # Do the common work!
 def main_common(
 	args: argparse.Namespace,
-	wait: Callable[[Any], Any],
+	waiter: sudns01.wait.Waiter,
 ) -> NoReturn:
 	# Do top-level (program-level) logging configuration
 	logging.basicConfig(
@@ -513,10 +429,9 @@ def main_common(
 
 	# Wait for the record to appear via the system resolver
 	record_found = False
-	wait_state = None
 	while not record_found:
 		# Wait for some amount of time
-		wait_state = wait(wait_state)
+		waiter.wait()
 
 		# Do an uncached TXT lookup
 		txt_records = dnslookup.get_txt(
