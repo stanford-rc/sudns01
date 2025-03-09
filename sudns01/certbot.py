@@ -163,7 +163,9 @@ class BaseAuthenticator(
 		line, then this will be run, even if we are not chosen.
 		"""
 		debug('In prepare')
-		pass
+
+		# Set up a Resolver
+		# TODO
 
 	def perform(
 		self,
@@ -215,7 +217,15 @@ class BaseAuthenticator(
 		validation) which could cause certbot to fail.
 		"""
 		debug('In setup_credentials')
-		pass
+
+		# Check if we have a cleanup challenge, and if it's valid.
+		# TODO
+
+		# Set up a dnsupdate client
+		# TODO
+
+		# Set up dnsupdate signing
+		# TODO
 
 	def _perform(self,
 		domain: str,
@@ -249,6 +259,21 @@ class BaseAuthenticator(
 		:param validation: The string to add as the value for the TXT record.
 		"""
 		debug(f"In perform for {domain}: {validation_name} = {validation}")
+
+		# Do any old-record cleanup, if we're supposed to
+		# TODO
+
+		# Prepare our challenge record
+		# TODO
+
+		# Send the request
+		# TODO
+
+		# Close our current signer
+		# TODO
+
+		# Do wait-check loop
+		# TODO
 
 	def auth_hint(
 		self,
@@ -289,7 +314,11 @@ class BaseAuthenticator(
 		:param validation: The string to add as the value for the TXT record.
 		"""
 		debug(f"In cleanup for {domain}")
-		return
+		# Set up a dnsupdate client
+		# TODO
+
+		# Set up dnsupdate signing
+		# TODO
 
 class GenericAuthenticator(BaseAuthenticator):
 	"""Authenticator configuration that is not Stanford-specific.
