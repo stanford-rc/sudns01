@@ -236,7 +236,19 @@ class BaseAuthenticator(
 		debug('In prepare')
 
 		# Set up a Resolver
-		# TODO
+		self.gssconf.resolver = sudns01.clients.resolver.ResolverClient()
+
+		# Check if we will use a Credential Store
+		if sudns01.clients.tkey.HAS_CREDENTIAL_STORE:
+			debug('We have the Credential Store Extensions')
+			if (
+				self.get_config('ccache') is not None or
+				self.get_config('keytab') is not None
+			):
+				self.gssconf.creds = sudns01.clients.tkey.KrbCreds(
+					ccache=self.get_config('ccache'),
+					client_keytab=self.get_config('keytab'),
+				)
 
 	def perform(
 		self,
@@ -288,14 +300,77 @@ class BaseAuthenticator(
 		"""
 		debug('In setup_credentials')
 
+		# Make sure we have a resolver
+		if self.gssconf.resolver is None:
+			error('resolver has not been set yet!')
+			raise certbot.errors.PluginError('The Authenticator plugin has not been fully initialized.')
+
 		# Check if we have a cleanup challenge, and if it's valid.
 		# TODO
 
 		# Set up a dnsupdate client
-		# TODO
+		try:
+			nsupdate_server_ips = self.gssconf.resolver.get_ip(
+				self.get_config('nsupdate')
+			)
+		except sudns01.clients.exceptions.ResolverError as e:
+			raise certbot.errors.PluginError(
+				f"Temporary error looking up {self.config.nsupdate}: {e}"
+			)
+		except sudns01.clients.exceptions.ResolverErrorPermanent as e:
+			raise certbot.errors.PluginError(
+				f"Permanent error looking up {self.config.nsupdate}: {e}"
+			)
+		if len(nsupdate_server_ips) == 0:
+			raise certbot.errors.PluginError(
+				f"No IP addresses found for {self.config.nsupdate}"
+			)
+		self.gssconf.nsupdate = sudns01.clients.query.QueryClient(
+			ips=nsupdate_server_ips,
+			port=self.get_config('port'),
+			timeout=self.get_config('timeout'),
+			udp=self.get_config('udp'),
+		)
+		info(
+			'nsupdate server is ' +
+			('UDP' if self.get_config('udp') is True else 'TCP') +
+			' to port port ' +
+			str(self.get_config('port')) +
+			f" of {nsupdate_server_ips}, timeout " +
+			str(self.get_config('timeout')) +
+			' seconds.'
+		)
 
 		# Set up dnsupdate signing
-		# TODO
+		dnsupdate_info_str = (
+			'GSSAPI authentication is to ' +
+			'DNS/' + self.get_config('nsupdate').lower() +
+			', using '
+		)
+		if self.gssconf.creds is None:
+			dnsupdate_info_str += 'credentials from the environment.'
+		else:
+			if self.get_config('ccache') is None:
+				dnsupdate_info_str += 'credentials cache from the environment'
+			else:
+				dnsupdate_info_str += 'credentials cache ' + self.get_config('ccache')
+			dnsupdate_info_str += ' and '
+			if self.get_config('keytab') is None:
+				dnsupdate_info_str += 'no keytab.'
+			else:
+				dnsupdate_info_str += 'keytab from ' + self.get_config('keytab')
+			dnsupdate_info_str += '.'
+		info(dnsupdate_info_str)
+		try:
+			signer = sudns01.clients.tkey.GSSTSig(
+				dnsquery=self.gssconf.nsupdate,
+				server=self.get_config('nsupdate'),
+				creds=self.gssconf.creds,
+			)
+		except NotImplementedError:
+			raise certbot.errors.PluginError(
+				"Your GSSAPI implementation does not have support for manipulating credential stores.  Try again without the ccache and keytab options."
+			)
 
 	def _perform(self,
 		domain: str,
