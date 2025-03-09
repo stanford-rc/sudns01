@@ -256,6 +256,10 @@ class BaseAuthenticator(
 					client_keytab=self.get_config('keytab'),
 				)
 
+		# Check timeout
+		if self.get_config('timeout') <= 0:
+			raise certbot.errors.PluginError(f"--{self.cli_prefix}-timeout must be a positive number")
+
 	def perform(
 		self,
 		achalls: list[certbot.achallenges.AnnotatedChallenge],
@@ -512,6 +516,18 @@ class GenericAuthenticator(BaseAuthenticator):
 		add('nsupdate',
 			help='The DNS server that handles nsupdate messages.',
 		)
+
+	def prepare(self) -> None:
+		super().prepare()
+
+		# Check our command-line arguments
+		# NOTE: We cannot check nsupdate unless we know we're being used.
+		port = self.get_config('port')
+		if port < 1 or port > 65535:
+			raise certbot.errors.PluginError(f"--{self.cli_prefix}-port {port} is invalid.")
+		wait = self.get_config('wait')
+		if wait < 0:
+			raise certbot.errors.PluginError(f"--{self.cli_prefix}-wait must be non-negative")
 
 class StanfordAuthenticator(BaseAuthenticator):
 	"""Stanford-specific Authenticator configuration.
