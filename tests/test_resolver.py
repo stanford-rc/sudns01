@@ -110,7 +110,7 @@ def test_get_zone_name_good() -> None:
 		'www.stanford.edu',
 		raise_on_cdname=False,
 	)
-	assert str(results) == 'stanford.edu.'
+	assert str(results) == 'fastly.net.'
 
 def test_get_zone_name_relative() -> None:
 	name=dns.name.Name(labels=('hello',))
