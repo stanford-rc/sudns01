@@ -1,0 +1,11 @@
+# KDC files
+krb5kdc.pid
+principal
+principal.kadm5
+principal.kadm5.lock
+principal.ok
+stash
+
+# Test keytabs
+keytab.dns
+keytab.host1
