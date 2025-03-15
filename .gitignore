@@ -13,3 +13,6 @@ sudns01.egg-info
 
 # test stuff
 .coverage
+
+# Certbot data
+le
