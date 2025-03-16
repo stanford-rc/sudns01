@@ -1,0 +1,10 @@
+# Keytab
+keytab
+
+# named files
+_default.tsigkeys
+log
+managed-keys.bind.jnl
+named.pid
+named.run
+zone
