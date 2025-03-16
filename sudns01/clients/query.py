@@ -76,9 +76,9 @@ class QueryClient():
         """
         if len(ips) == 0:
             raise ValueError("No server IPs")
-        if (port < 0) or (port > 65535):
+        if (port <= 0) or (port > 65535):
             raise ValueError(f"Invalid port {port}")
-        if timeout < 0:
+        if timeout <= 0:
             raise ValueError(f"Invalid timeout {timeout}")
         self._ips = ips
         self._port = port
