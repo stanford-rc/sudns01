@@ -1,0 +1,20 @@
+; vim: ts=8 sw=8 noet
+
+$TTL 1d
+$ORIGIN localdomain.
+
+; Make our SOA record
+@	IN	SOA	ns.localdomain. nobody.stanford.edu. (
+				1
+				1h
+				1h
+				1h
+				1h
+				)
+	IN	NS	ns.localdomain.
+
+; We need to have a DNS server entry
+ns	IN	A	127.0.0.1
+
+; Make a long entry to test that BIND sends a YXDOMAIN response.
+d	IN	DNAME	1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.example.com.
