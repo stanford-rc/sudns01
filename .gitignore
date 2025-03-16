@@ -13,6 +13,8 @@ sudns01.egg-info
 
 # test stuff
 .coverage
+.installed-editable
+.installed-test-editable
 
 # Certbot data
 le
