@@ -1,4 +1,5 @@
 # KDC files
+kdc
 krb5kdc.pid
 principal
 principal.kadm5
