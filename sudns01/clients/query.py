@@ -178,12 +178,12 @@ class QueryClient():
 
         for answer in message.answer:
             sections_components.append(
-                'ANSWER=<' + question.to_text() + '>'
+                'ANSWER=<' + answer.to_text() + '>'
             )
 
         for authority in message.authority:
             sections_components.append(
-                'AUTHORITY=<' + question.to_text() + '>'
+                'AUTHORITY=<' + authority.to_text() + '>'
             )
 
         for additional in message.additional:
