@@ -16,6 +16,7 @@
 
 # Stdlib imports
 import datetime
+import enum
 import logging
 import time
 import zoneinfo
@@ -119,6 +120,26 @@ def test_fixed_wait(monkeypatch) -> None:
 		m.setattr(time, "sleep", fs) 
 		waiter_sixty.wait()
 		assert fs.waited_time == 60.0
+
+def test_stanford_unknown_state() -> None:
+	"""Test handling an unknown state
+
+	The Stanford waiter uses an Enum to keep track of its state.
+	Test the code which throws an exception if it encounters an unknown state.
+	"""
+
+	# Make a new state Enum class, with an additional state
+	class BadWaitState(enum.Enum):
+		BEFORE_REFRESH = 1
+		IN_REFRESH = 2
+		WHAT = 999
+
+	# Make a StanfordWaiter, step it (to initialize it), then sub in our state
+	waiter = StanfordWaiter()
+	waiter.step()
+	waiter.state = BadWaitState.WHAT # type: ignore[assignment]
+	with pytest.raises(TypeError):
+		waiter.step()
 
 def test_stanford_start() -> None:
 	"""Test StanfordWaiter starting states.
