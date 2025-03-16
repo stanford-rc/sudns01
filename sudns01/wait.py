@@ -41,7 +41,7 @@ class Waiter(metaclass=abc.ABCMeta):
 		*args,
 		**kwargs
 	) -> None:
-		...
+		pass
 
 	@abc.abstractmethod
 	def step(self) -> datetime.timedelta:
@@ -53,7 +53,7 @@ class Waiter(metaclass=abc.ABCMeta):
 
 		:returns: A float, suitable for passing to `time.sleep()`.
 		"""
-		...
+		... # pragma: no cover
 
 	def wait(self) -> None:
 		"""Wait.
