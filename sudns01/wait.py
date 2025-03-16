@@ -179,7 +179,7 @@ class StanfordWaiter(Waiter):
 				# Let's be hopeful and start checking immediately.
 				debug('Not waiting at all!')
 				target_time = now
-			elif now.minute > 5 and now.minute <= 35:
+			elif now.minute > 5 and now.minute < 35:
 				debug('Waiting until :35')
 				# Wait until :35 of this hour.
 				target_time = now.replace(
