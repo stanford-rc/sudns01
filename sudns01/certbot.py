@@ -226,10 +226,23 @@ class BaseAuthenticator(
 			)
 
 	def more_info(self) -> str:
-		debug('In more_info!!!!!')
+		"""A function that is never called, and should not need to exist.
 
-		# I'm still not exactly sure where this call is executed.
-		return "MORE INFO ABOUT SUDNS01"
+		Thanks much to @erica from the #certbot channel (on EFF's Mattermost
+		instance) for providing more information on this!
+
+		`more_info` is not called by anything, and there have been plans to
+		deprecate it[1].  It looks like this function's purpose was taken by
+		`description`, because that is easier for certbot to access[1].
+
+		So, this method exists, but will only ever throw an exception.
+
+		[0]: https://github.com/certbot/certbot/issues/9535
+
+		[1]: https://github.com/certbot/certbot/pull/3521#discussion_r86688107
+		"""
+		error('more_info is being called')
+		raise NotImplementedError
 
 	def prepare(self) -> None:
 		"""Take an action at the start of program execution.
