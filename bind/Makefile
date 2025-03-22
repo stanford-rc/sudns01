@@ -48,4 +48,4 @@ stop: $(ROOT_DIR)/named.pid
 clean:
 	rm -f $(ROOT_DIR)/bind $(ROOT_DIR)/log $(ROOT_DIR)/keytab
 	rm -f $(ROOT_DIR)/_default.tsigkeys $(ROOT_DIR)/managed-keys.bind*
-	rm -f $(ROOT_DIR)/zone.jnl
+	rm -f $(ROOT_DIR)/zone $(ROOT_DIR)/zone.jnl
