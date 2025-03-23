@@ -16,5 +16,10 @@ $ORIGIN localdomain.
 ; We need to have a DNS server entry
 ns	IN	A	127.0.0.1
 
+; We need two records to test old-challenge cleanup code.
+; One record will be a single item; the other will be a tuple
+_acme-challenge.blargh	IN	TXT	"single entry"
+_acme-challenge.blargh	IN	TXT	"entry one" "entry two"
+
 ; Make a long entry to test that BIND sends a YXDOMAIN response.
 d	IN	DNAME	1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.example.com.
