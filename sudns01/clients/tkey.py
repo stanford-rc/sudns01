@@ -362,10 +362,10 @@ class GSSTSig():
 		)
 
 		# Send the deletion.  We don't care about DNS-related issues.
-		try:
-			self._dnsquery.query(gss_delete_request)
-		except sudns01.clients.exceptions.ClientError:
-			pass
+		#try:
+		#	self._dnsquery.query(gss_delete_request)
+		#except sudns01.clients.exceptions.ClientError:
+		#	pass
 
 		# Delete the GSSAPI context and mark our instance as closed.
 		gss_delete_token = gssapi.raw.delete_sec_context(gss_ctx)
