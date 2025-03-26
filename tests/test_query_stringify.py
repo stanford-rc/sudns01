@@ -36,6 +36,8 @@ import dns.update
 import sudns01.clients.query
 
 # Make a client for sending queries.
+# NOTE: We don't actually make any queries here, we just need the client
+# instance to test strinficiation.
 query = sudns01.clients.query.QueryClient(
 	ips=['127.0.0.1'],
 	port=(int(os.environ['TEST_DNS_PORT']) if 'TEST_DNS_PORT' in os.environ else 53),
