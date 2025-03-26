@@ -18,9 +18,10 @@
 # NOTE: We're not aiming to test dnspython's conversion code.  Instead, we're
 # testing the code that puts everything toegerher.
 
+# Stdlib imports
 import os
-import pytest
 
+# PyPi imports
 import dns.flags
 import dns.message
 import dns.name
@@ -32,8 +33,11 @@ import dns.rdtypes.IN.A
 import dns.rdtypes.IN.AAAA
 import dns.rrset
 import dns.update
+import pytest
 
+# Local imports
 import sudns01.clients.query
+
 
 # Make a client for sending queries.
 # NOTE: We don't actually make any queries here, we just need the client
@@ -43,8 +47,12 @@ query = sudns01.clients.query.QueryClient(
 	port=(int(os.environ['TEST_DNS_PORT']) if 'TEST_DNS_PORT' in os.environ else 53),
 )
 
-# Test a non-update message
+
+# Now, our tests
 def test_message() -> None:
+	"""Test stringification of a non-update message.
+	"""
+
 	# Make some names
 	localhost_localdomain = dns.name.from_text('localhost.localdomain')
 	localdomain = dns.name.from_text('localdomain')
@@ -142,8 +150,10 @@ def test_message() -> None:
 		'ADDITIONAL=<ns.localdomain. 0 IN A 127.0.0.1>'
 	)
 
-# Test a nsupdate message
 def test_update() -> None:
+	"""Test stringification of an update message.
+	"""
+
 	# Make some names
 	localhost_localdomain = dns.name.from_text('localhost.localdomain')
 	localdomain = dns.name.from_text('localdomain')

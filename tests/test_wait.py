@@ -25,8 +25,9 @@ from typing import NamedTuple
 # PyPi imports
 import pytest
 
-# local imports
+# Local imports
 from sudns01.wait import FixedWaiter, StanfordWaiter
+
 
 # Make some datetime objects for test cases.  Include the times when Big Ben
 # chimes, plus the refresh times, and one minute before & after.
@@ -74,8 +75,12 @@ t16_06 = t15_45.replace(
 	minute=6,
 )
 
-# Test FixedWaiter
+
+# Now, our tests
 def test_fixed() -> None:
+	"""Test basic FixedWaiter functionality.
+	"""
+
 	# Test initializing some waiters
 	waiter_zero = FixedWaiter(0.0)
 	assert waiter_zero.how_long == 0.0
@@ -99,8 +104,10 @@ def test_fixed() -> None:
 	step_sixty2 = waiter_sixty.step()
 	assert (t15_04 + step_sixty2) == t15_05
 
-# Test waiting, using the FixedWaiter
 def test_fixed_wait(monkeypatch) -> None:
+	"""Test actually waiting with the FixedWaiter.
+	"""
+
 	waiter_sixty = FixedWaiter(60.0)
 
 	# Make a class to hold how long we wait.

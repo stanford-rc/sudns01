@@ -16,25 +16,26 @@
 
 # Test using our query client (without sending nsupdate messages)
 
+# Stdlib imports
 import dns.name
 import dns.resolver
 import os
-import pytest
 
+# PyPy imports
 import dns.flags
 import dns.message
 import dns.name
 import dns.rdataclass
 import dns.rdatatype
 import dns.rrset
+import pytest
 
+# Local imports
 import sudns01.clients.exceptions
 import sudns01.clients.query
 
-# Make a client for sending queries.
-# We will create this even if we don't have a test DNS server, since we can do
-# a few tests without one.
 
+# Make some fixtures
 @pytest.fixture
 def query_tcp() -> sudns01.clients.query.QueryClient | None:
 	if 'TEST_DNS_PORT' not in os.environ:
@@ -54,6 +55,8 @@ def query_udp() -> sudns01.clients.query.QueryClient | None:
 		udp=True
 	)
 
+
+# Now, our tests
 def test_constructor() -> None:
 	"""Test the contructor catches configuration errors.
 	"""

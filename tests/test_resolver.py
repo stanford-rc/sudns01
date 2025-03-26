@@ -14,14 +14,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Stdlib imports
+import os
+
+# PyPi imports
 import dns.name
 import dns.resolver
-import os
 import pytest
 
+# Local imports
 import sudns01.clients.exceptions
 import sudns01.clients.resolver
 
+
+# Make some fixtures
 resolver = sudns01.clients.resolver.ResolverClient()
 
 # Set up a resolver client pointing to a DNS server that doesn't exist.
@@ -55,6 +61,8 @@ def local_resolver() -> sudns01.clients.resolver.ResolverClient | None:
 	local_resolver._resolver_nocache = local_resolver_resolver
 	return local_resolver
 
+
+# Now, our tests
 def test_get_ip_good() -> None:
 	results = resolver.get_ip('web.stanford.edu')
 
