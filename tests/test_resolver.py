@@ -27,27 +27,33 @@ resolver = sudns01.clients.resolver.ResolverClient()
 # Set up a resolver client pointing to a DNS server that doesn't exist.
 # 192.0.2.0/24 is defined within RFC 5735.
 # Since we'll never get results, no need for a cache.
-bad_resolver_resolver = dns.resolver.Resolver(configure=False)
-bad_resolver_resolver.nameservers = ['192.0.2.1']
-bad_resolver_resolver.timeout = 0.1
-bad_resolver_resolver.lifetime = 0.1
-bad_resolver = sudns01.clients.resolver.ResolverClient()
-bad_resolver._resolver = bad_resolver_resolver
-bad_resolver._resolver_nocache = bad_resolver_resolver
+@pytest.fixture
+def bad_resolver() -> sudns01.clients.resolver.ResolverClient:
+	bad_resolver_resolver = dns.resolver.Resolver(configure=False)
+	bad_resolver_resolver.nameservers = ['192.0.2.1']
+	bad_resolver_resolver.timeout = 0.1
+	bad_resolver_resolver.lifetime = 0.1
+	bad_resolver = sudns01.clients.resolver.ResolverClient()
+	bad_resolver._resolver = bad_resolver_resolver
+	bad_resolver._resolver_nocache = bad_resolver_resolver
+	return bad_resolver
 
 # Set up a resolver client pointing to a local test DNS server.
 # NOTE: Only use this resolver if the "dns" mark is set for pytest, and (of
 # course) if the DNS server is actually available!
-local_resolver: sudns01.clients.resolver.ResolverClient | None = None
-if 'TEST_DNS_PORT' in os.environ:
-    local_resolver_resolver = dns.resolver.Resolver(configure=False)
-    local_resolver_resolver.nameservers = ['127.0.0.1']
-    local_resolver_resolver.port = int(os.environ['TEST_DNS_PORT'])
-    local_resolver_resolver.timeout = 0.1
-    local_resolver_resolver.lifetime = 0.1
-    local_resolver = sudns01.clients.resolver.ResolverClient()
-    local_resolver._resolver = local_resolver_resolver
-    local_resolver._resolver_nocache = local_resolver_resolver
+@pytest.fixture
+def local_resolver() -> sudns01.clients.resolver.ResolverClient | None:
+	if 'TEST_DNS_PORT' not in os.environ:
+		return None
+	local_resolver_resolver = dns.resolver.Resolver(configure=False)
+	local_resolver_resolver.nameservers = ['127.0.0.1']
+	local_resolver_resolver.port = int(os.environ['TEST_DNS_PORT'])
+	local_resolver_resolver.timeout = 0.1
+	local_resolver_resolver.lifetime = 0.1
+	local_resolver = sudns01.clients.resolver.ResolverClient()
+	local_resolver._resolver = local_resolver_resolver
+	local_resolver._resolver_nocache = local_resolver_resolver
+	return local_resolver
 
 def test_get_ip_good() -> None:
 	results = resolver.get_ip('web.stanford.edu')
@@ -63,13 +69,13 @@ def test_get_ip_nxdomain() -> None:
 	# .invalid comes from RFC 2606
 	assert len(results) == 0
 
-def test_get_ip_yxdomain() -> None:
+def test_get_ip_yxdomain(local_resolver) -> None:
     if local_resolver is None:
         pytest.skip('No Test DNS Server configured')
     with pytest.raises(sudns01.clients.exceptions.ResolverErrorPermanent):
         results = local_resolver.get_ip('1234567890.1234567890.1234567890.1234567890.1234567890.d.localdomain')
 
-def test_get_ip_noresponse() -> None:
+def test_get_ip_noresponse(bad_resolver) -> None:
 	with pytest.raises(sudns01.clients.exceptions.ResolverError):
 		results = bad_resolver.get_ip('example.com')
 
@@ -83,13 +89,13 @@ def test_get_txt_nxdomain() -> None:
 	results = resolver.get_txt('example.invalid')
 	assert len(results) == 0
 
-def test_get_txt_yxdomain() -> None:
+def test_get_txt_yxdomain(local_resolver) -> None:
     if local_resolver is None:
         pytest.skip('No Test DNS Server configured')
     with pytest.raises(sudns01.clients.exceptions.ResolverErrorPermanent):
         results = local_resolver.get_txt('1234567890.1234567890.1234567890.1234567890.1234567890.d.localdomain')
 
-def test_get_txt_noresponse() -> None:
+def test_get_txt_noresponse(bad_resolver) -> None:
 	with pytest.raises(sudns01.clients.exceptions.ResolverError):
 		results = bad_resolver.get_txt('example.com')
 
@@ -126,12 +132,12 @@ def test_get_zone_name_nxdomain() -> None:
 	with pytest.raises(sudns01.clients.exceptions.ResolverErrorPermanent):
 		assert resolver.get_zone_name('example.invalid')
 
-def test_get_zone_name_yxdomain() -> None:
+def test_get_zone_name_yxdomain(local_resolver) -> None:
     if local_resolver is None:
         pytest.skip('No Test DNS Server configured')
     with pytest.raises(sudns01.clients.exceptions.ResolverErrorPermanent):
         results = local_resolver.get_zone_name('1234567890.1234567890.1234567890.1234567890.1234567890.d.localdomain')
 
-def test_get_zone_name_noresponse() -> None:
+def test_get_zone_name_noresponse(bad_resolver) -> None:
 	with pytest.raises(sudns01.clients.exceptions.ResolverError):
 		results = bad_resolver.get_zone_name('www.stanford.edu')

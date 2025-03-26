@@ -34,13 +34,21 @@ import sudns01.clients.query
 # Make a client for sending queries.
 # We will create this even if we don't have a test DNS server, since we can do
 # a few tests without one.
-query_tcp: sudns01.clients.query.QueryClient | None = None
-if 'TEST_DNS_PORT' in os.environ:
-	query_tcp = sudns01.clients.query.QueryClient(
+
+@pytest.fixture
+def query_tcp() -> sudns01.clients.query.QueryClient | None:
+	if 'TEST_DNS_PORT' not in os.environ:
+		return None
+	return sudns01.clients.query.QueryClient(
 		ips=['127.0.0.1'],
 		port=int(os.environ['TEST_DNS_PORT']),
 	)
-	query_udp = sudns01.clients.query.QueryClient(
+
+@pytest.fixture
+def query_udp() -> sudns01.clients.query.QueryClient | None:
+	if 'TEST_DNS_PORT' not in os.environ:
+		return None
+	return sudns01.clients.query.QueryClient(
 		ips=['127.0.0.1'],
 		port=int(os.environ['TEST_DNS_PORT']),
 		udp=True
@@ -69,13 +77,13 @@ def test_constructor() -> None:
 			timeout=0.0,
 		)
 
-def test_resolve_a() -> None:
+def test_resolve_a(query_tcp, query_udp) -> None:
 	"""Make a simple call to resolve an A record.
 
 	Since we know our test resolver has a record for `ns.localdomain`, make a
 	DNS query for that—both TCP and UDP—then check the response.
 	"""
-	if query_tcp is None:
+	if query_tcp is None or query_tcp is None:
 		pytest.skip('No Test DNS Server configured')
 
 	# Make a name
@@ -149,7 +157,7 @@ def test_oserror() -> None:
 	# TODO
 	pass
 
-def test_badresponse() -> None:
+def test_badresponse(query_tcp, query_udp) -> None:
 	"""Hack a query that gives us a bad response.
 
 	A BadResponse is sent by dnspython when the response it gets from a DNS
@@ -158,7 +166,7 @@ def test_badresponse() -> None:
 	override dnspython code.
 	"""
 	# This test does end up sending out a DNS query, so we need a resolver.
-	if query_tcp is None:
+	if query_tcp is None or	query_udp is None:
 		pytest.skip('No Test DNS Server configured')
 
 	# This monkeyClass always returns False for is_response
