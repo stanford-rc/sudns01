@@ -42,7 +42,7 @@ def bad_resolver() -> sudns01.clients.resolver.ResolverClient:
 	"""
 	# Since we'll never get results, no need for a cache.
 	bad_resolver_resolver = dns.resolver.Resolver(configure=False)
-	bad_resolver_resolver.nameservers = ['192.0.2.1']
+	bad_resolver_resolver.nameservers = ['192.0.0.8']
 	bad_resolver_resolver.timeout = 0.1
 	bad_resolver_resolver.lifetime = 0.1
 	bad_resolver = sudns01.clients.resolver.ResolverClient()
