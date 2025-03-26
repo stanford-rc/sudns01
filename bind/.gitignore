@@ -2,6 +2,7 @@
 keytab
 
 # named files
+bind
 _default.tsigkeys
 log
 managed-keys.bind.jnl
