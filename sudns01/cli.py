@@ -67,7 +67,6 @@
 
 # stdlib imports
 import argparse
-import binascii
 from collections.abc import Callable
 import logging
 import pathlib
@@ -82,6 +81,7 @@ import dns.rdtypes.ANY.TXT
 import dns.update
 
 # local imports
+import sudns01.clients.challenge
 import sudns01.clients.query
 import sudns01.clients.resolver
 import sudns01.clients.tkey
@@ -229,23 +229,32 @@ def main_common(
 			)
 		),
 	)
-	
-	# Are we doing a cleanup?
-	cleanup_challenge = "{:#010x}".format(
-		binascii.crc32(args.name.encode('ASCII'))
+
+	# Grab variables from our command-line arguments
+	DNSUPDATE_SERVER: str = args.nsupdate
+	DNSUPDATE_PORT: int = args.port
+	DNSUPDATE_TIMEOUT: float = args.timeout
+	TARGET_NAME: dns.name.Name = dns.name.from_text(args.name)
+	TTL: int = 60
+	CHALLENGE: bytes = args.challenge.encode('ASCII')
+	dns_queries_on_udp = args.udp
+
+	# Prep for cleanup
+	cleanup = sudns01.clients.challenge.Cleanup(
+		domain=TARGET_NAME,
 	)
 	if args.cleanup:
 		# Tell the user what challenge to provide
 		print('This option will remove other ACME Challenge TXT records for {args.name}.')
 		print('THIS CAN BE DANGEROUS!  The TXT records might be in place for other reasons.')
-		print(f"To cleanup anyway, change `--cleanup` to `--cleanup2 {cleanup_challenge}` and try again.")
+		print(f"To cleanup anyway, change `--cleanup` to `--cleanup2 {cleanup.challenge}` and try again.")
 		sys.exit(1)
 	if args.cleanup2 is not None:
 		# The user has set --cleanup2.  What challenge do we expect?
-		debug(f"Found cleanup, expecting challenge {cleanup_challenge}")
+		debug(f"Found cleanup, expecting challenge {cleanup.challenge}")
 
 		# If the user provided a challenge, and it does _not_ match, then tell them.
-		if args.cleanup2 != cleanup_challenge:
+		if not cleanup.is_challenge_valid(args.cleanup2):
 			print(f"You provided the wrong cleanup challenge for {args.name}.")
 			print(f"Change `--cleanup2 {args.cleanup2}` to `--cleanup` and try again.")
 			sys.exit(1)
@@ -262,14 +271,6 @@ def main_common(
 				ccache=args.ccache,
 				client_keytab=args.keytab,
 			)
-
-	DNSUPDATE_SERVER: str = args.nsupdate
-	DNSUPDATE_PORT: int = args.port
-	DNSUPDATE_TIMEOUT: float = args.timeout
-	TARGET_NAME: dns.name.Name = dns.name.from_text(args.name)
-	TTL: int = 60
-	CHALLENGE: bytes = args.challenge.encode('ASCII')
-	dns_queries_on_udp = args.udp
 
 	# Set up a Resolver
 	dnslookup = sudns01.clients.resolver.ResolverClient()
@@ -323,19 +324,11 @@ def main_common(
 
 	# Do cleanup first, before issuing our challenge
 	if args.cleanup2 is not None:
-		old_challenges = dnslookup.get_txt(
-			acme_challenge_name,
-			raise_on_cdname=False,
+		old_challenge_iterator = cleanup.get_old_challenges(
+			resolver=dnslookup,
+			acme_challenge_name=acme_challenge_name,
 		)
-		if len(old_challenges) == 0:
-			debug(f"No challenge records to clean up for {acme_challenge_name}")
-		for old_challenge in old_challenges:
-			# if old_challenge is not a tuple, make it a tuple
-			if isinstance(old_challenge, tuple):
-				old_challenge_tuple = old_challenge
-			else:
-				old_challenge_tuple = (old_challenge,)
-
+		for old_challenge_tuple in old_challenge_iterator:
 			# To ensure log messages print, make a tuple of strings.
 			old_challenge_str = tuple(
 				x.decode('ascii', 'backslashreplace')
@@ -343,22 +336,10 @@ def main_common(
 			)
 			info(f"Cleaning up old challenge {old_challenge_str}")
 
-			# Construct a TXT record to target for deletion
-			old_challenge_rdata = dns.rdtypes.ANY.TXT.TXT(
-				rdclass=dns.rdataclass.IN,
-				rdtype=dns.rdatatype.TXT,
-				strings=old_challenge_tuple,
-			)
-
-			# Construct our deletion request
-			old_challenge_delete = dns.update.UpdateMessage(
-				zone=target_domain,
-				rdclass=dns.rdataclass.IN,
-				**signer.dnspython_args,
-			)
-			old_challenge_delete.delete(
-				acme_challenge_name_relative,
-				old_challenge_rdata,
+			old_challenge_delete = cleanup.get_delete_message(
+				record=old_challenge_tuple,
+				resolver=dnslookup,
+				signer=signer,
 			)
 
 			# Send out the request.  If we get an exception, log a warning, but
