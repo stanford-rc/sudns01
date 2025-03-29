@@ -59,6 +59,9 @@ class SplitName(NamedTuple):
 	label: SplitNameLabel
 	zone: SplitNameZone
 
+	def __str__(self) -> str:
+		return f"{self.label!s},{self.zone!s}"
+
 # Make a class for cleanup-related stuff
 @dataclasses.dataclass(frozen=True)
 class Cleanup():
@@ -152,25 +155,26 @@ The work of signing and sending is handled separately.
 
 		:returns: A tuple containing the label and zone portions of the domain.
 		"""
-		if acme_challenge_name is None:
-			acme_challenge_name = self.acme_name
+		debug(f"In split for {self.acme_name}")
 
 		# If the ACME challenge name is what we expect, can we use cache?
 		if acme_challenge_name == self.acme_name and self._split is not None:
+			debug("Using results from cache")
 			return self._split
 
 		# Use the resolver to work out our zone name
 		zone_name = resolver.get_zone_name(
-			acme_challenge_name,
+			self.acme_name,
 			raise_on_cdname=False,
 		)
 
 		# Split our ACME name into relative and zone parts
-		acme_name_relative = acme_challenge_name.relativize(zone_name)
+		acme_name_relative = self.acme_name.relativize(zone_name)
 		result = SplitName(
 			SplitNameLabel(acme_name_relative),
 			SplitNameZone(zone_name),
 		)
+		debug(f"Split name into {result}")
 
 		# Possibly cache, and return
 		if acme_challenge_name == self.acme_name:
@@ -233,9 +237,7 @@ The work of signing and sending is handled separately.
 
 		:returns: Tuples of byte strings.
 		"""
-		if acme_challenge_name is None:
-			acme_challenge_name = self.acme_name
-		debug(f"Looking up old TXT records for {acme_challenge_name}")
+		debug(f"Looking up old TXT records for {self.acme_name}")
 
 		# Make something to hold what we end up returning
 		results: set[tuple[bytes, ...]] = set()
@@ -246,7 +248,7 @@ The work of signing and sending is handled separately.
 			raise_on_cdname=False,
 		)
 		if len(records) == 0:
-			debug(f"No challenge records to clean up for {acme_challenge_name}")
+			debug(f"No challenge records to clean up for {self.acme_name}")
 			return
 
 		# Go through each returned record & convert to tuple
@@ -333,6 +335,7 @@ The work of signing and sending is handled separately.
 		"""
 		if acme_challenge_name is None:
 			acme_challenge_name = self.acme_name
+		debug(f"Making challenge add message {challenge} for {acme_challenge_name}")
 
 		# Split our domain into label and zone parts
 		domain_parts = self.split(resolver)
@@ -388,6 +391,7 @@ The work of signing and sending is handled separately.
 		"""
 		if acme_challenge_name is None:
 			acme_challenge_name = self.acme_name
+		debug(f"Making challenge delete message {challenge} for {acme_challenge_name}")
 
 		# Split our domain into label and zone parts
 		domain_parts = self.split(resolver)
