@@ -31,6 +31,7 @@ import pytest
 
 # Local imports
 import sudns01.clients.challenge
+import sudns01.clients.query
 import sudns01.clients.resolver
 import sudns01.clients.tkey
 
@@ -55,6 +56,26 @@ cases: list[Case] = [
 ]
 
 # Make some fixtures
+@pytest.fixture
+def local_query() -> sudns01.clients.query.QueryClient | None:
+	"""Set up a query client pointing to a local test DNS server.
+
+	This provides a `QueryClient` that works against the local test DNS
+	server.  It is only provided if the `TEST_DNS_PORT` environment variable is
+	set.
+
+	If the environment variable is not set, then `None` is returned.
+	"""
+	if 'TEST_DNS_PORT' not in os.environ:
+		return None
+
+	local_query = sudns01.clients.query.QueryClient(
+		ips=['127.0.0.1'],
+		port=int(os.environ['TEST_DNS_PORT']),
+		timeout=1.0,
+	)
+	return local_query
+
 @pytest.fixture
 def local_resolver() -> sudns01.clients.resolver.ResolverClient | None:
 	"""Set up a resolver client pointing to a local test DNS server.
@@ -414,3 +435,112 @@ def test_get_challenge_delete_message(
 	assert rdata.rdclass == dns.rdataclass.IN
 	assert rdata.rdtype == dns.rdatatype.TXT
 	assert rdata.strings == (challenge.encode('ASCII'),)
+
+def test_challenge_in_dns(
+	local_query,
+	local_resolver,
+	local_signer,
+) -> None:
+	"""Test our code that checks if a challenge is in DNS.
+	"""
+	if local_query is None:
+		pytest.skip('No Test DNS Server configured')
+	if local_resolver is None:
+		pytest.skip('No Test DNS Server configured')
+	if local_signer is None:
+		pytest.skip('No Test KDC configured')
+
+	# Make some DNS name components
+	acme_challenge = dns.name.Name(labels=('_acme-challenge',))
+	host1 = dns.name.Name(labels=('host1',))
+	localdomain = dns.name.from_text('localdomain')
+
+	acme_challenge_host1 = acme_challenge + host1
+	acme_challenge_host1_localdomain = acme_challenge_host1 + localdomain
+	host1_localdomain = host1 + localdomain
+
+	# Make some test strings.
+	# strings1 is our challenge, so we want a string and bytes form.
+	# strings2 is just there to have a tuple in DNS.  We don't check for it.
+	string1 = (
+		'ABCDEFGHIJKLMNOPQRSTUVWXYZ' +
+		'abcdefghijklmnopqrstuvwxyz' +
+		'1234567890-_'
+	)
+	strings2_bin = (b'abc', b'def')
+
+	# Make challenge records
+	string1_rdata = dns.rdtypes.ANY.TXT.TXT(
+		rdclass=dns.rdataclass.IN,
+		rdtype=dns.rdatatype.TXT,
+		strings=(
+			string1.encode('ASCII'),
+		),
+	)
+	strings2_rdata = dns.rdtypes.ANY.TXT.TXT(
+		rdclass=dns.rdataclass.IN,
+		rdtype=dns.rdatatype.TXT,
+		strings=strings2_bin,
+	)
+
+	# Make our add request
+	challenge_add = dns.update.UpdateMessage(
+		zone=localdomain,
+		rdclass=dns.rdataclass.IN,
+		**local_signer.dnspython_args,
+	)
+	challenge_add.add(
+		acme_challenge_host1,
+		10,
+		string1_rdata,
+	)
+	challenge_add.add(
+		acme_challenge_host1,
+		10,
+		strings2_rdata,
+	)
+
+	# Make our delete request
+	challenge_delete = dns.update.UpdateMessage(
+		zone=localdomain,
+		rdclass=dns.rdataclass.IN,
+		**local_signer.dnspython_args,
+	)
+	challenge_delete.delete(
+		acme_challenge_host1,
+		string1_rdata,
+	)
+	challenge_delete.delete(
+		acme_challenge_host1,
+		strings2_rdata,
+	)
+
+	# Make a cleanup instance
+	cleanup = sudns01.clients.challenge.Cleanup(
+		host1_localdomain,
+		acme_challenge_host1_localdomain,
+	)
+
+	# Send out add request
+	local_query.query(challenge_add)
+
+	# Make sure our challenge is in DNS
+	assert (
+		cleanup.is_challenge_in_dns(
+			challenge=string1,
+			resolver=local_resolver,
+		)
+		is True
+	)
+
+	# Send our delete request
+	local_query.query(challenge_delete)
+
+	# Make sure the challenge is no longer in DNS
+	assert (
+		cleanup.is_challenge_in_dns(
+			challenge=string1,
+			resolver=local_resolver,
+		)
+		is False
+	)

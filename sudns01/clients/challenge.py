@@ -405,3 +405,45 @@ class Cleanup():
 		)
 
 		return challenge_delete
+
+	def is_challenge_in_dns(
+		self,
+		challenge: str,
+		resolver: sudns01.clients.resolver.ResolverClient,
+	) -> bool:
+		"""Check if a challenge is appearing in DNS.
+
+		:param challenge: The challenge string to delete.
+
+		:param resolver: A DNS resolver, to look up the domain's zone.
+
+		:param acme_challenge_name: The DNS name to use for queries.  If not
+		provided, `_acme-challenge.` will be prepended to the existing
+		domain.
+
+		:returns: True if the challenge is in DNS, else False.
+		"""
+		debug(f"Checking {self.acme_name} for challenge {challenge}")
+
+		challenge_bytes = challenge.encode('ASCII')
+
+		# Do an uncached TXT lookup
+		txt_records = resolver.get_txt(
+			query=self.acme_name,
+			cached=False,
+			raise_on_cdname=False,
+		)
+
+		# Our output may contain tuples, so we can't do a simple `in` check
+		for txt_record in txt_records:
+			if isinstance(txt_record, tuple):
+				debug(f"Checking tuple {txt_record!r}")
+				if txt_record[0] == challenge_bytes:
+					return True
+			else:
+				debug(f"Checking bytes {txt_records!r}")
+				if txt_record == challenge_bytes:
+					return True
+
+		debug("No matching records found")
+		return False
