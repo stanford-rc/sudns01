@@ -118,13 +118,30 @@ def local_signer(
 
 
 # Now, our tests
+
+def test_acme_subdomain() -> None:
+	"""Make sure the subdomain check works.
+	"""
+
+	# Use our test cases.  Creating the instance with parameters in proper
+	# order should be fine; in reverse order, we should get a ValueError.
+	for case in cases:
+		sudns01.clients.challenge.Cleanup(
+			case.domain,
+			case.acme_name,
+		)
+		with pytest.raises(ValueError):
+			sudns01.clients.challenge.Cleanup(
+				case.acme_name,
+				case.domain,
+			)
+
 def test_acme_name() -> None:
 	"""Make sure the ACME names are generated as expected.
 	"""
 
 	for case in cases:
-		cleanup = sudns01.clients.challenge.Cleanup(case.domain)
-		assert cleanup.acme_name == case.acme_name
+		assert case.acme_name == sudns01.clients.challenge.Cleanup.acme_name_for_domain(case.domain)
 
 def test_split(local_resolver) -> None:
 	"""Make sure domain splitting works correctly
@@ -132,26 +149,24 @@ def test_split(local_resolver) -> None:
 	if local_resolver is None:
 		pytest.skip('No Test DNS Server configured')
 
+	blargh_localdomain = dns.name.from_text('blargh.localdomain')
+
 	# In the zone file, blargh.localdomain should have two TXT entries
 	cleanup_blargh = sudns01.clients.challenge.Cleanup(
-		dns.name.from_text('blargh.localdomain'),
+		blargh_localdomain,
+		sudns01.clients.challenge.Cleanup.acme_name_for_domain(blargh_localdomain)
 	)
 
-	# Run split twice, with and without the ACME name
-	blargh_split1 = cleanup_blargh.split(
-		resolver=local_resolver,
-		acme_challenge_name=dns.name.from_text('_acme-challenge.blargh.localdomain'),
-	)
-	blargh_split2 = cleanup_blargh.split(
+	# Run split
+	blargh_split = cleanup_blargh.split(
 		resolver=local_resolver,
 	)
 
-	# Check that both methods give the same result, and we got what we expected
-	assert blargh_split1 == blargh_split2
-	assert blargh_split1.label == dns.name.Name(
+	# Check that we got what we expected
+	assert blargh_split.label == dns.name.Name(
 		labels=('_acme-challenge', 'blargh')
 	)
-	assert blargh_split1.zone == dns.name.from_text('localdomain')
+	assert blargh_split.zone == dns.name.from_text('localdomain')
 
 def test_challenge() -> None:
 	"""Make sure challenge are checked correctly.
@@ -161,7 +176,10 @@ def test_challenge() -> None:
 	"""
 
 	for case in cases:
-		cleanup = sudns01.clients.challenge.Cleanup(case.domain)
+		cleanup = sudns01.clients.challenge.Cleanup(
+			case.domain,
+			case.acme_name,
+		)
 		assert cleanup.challenge == case.challenge
 		assert cleanup.is_challenge_valid(case.challenge) is True
 		assert cleanup.is_challenge_valid('0xdeadbeef') is False
@@ -174,35 +192,32 @@ def test_get_old_challenges(
 	if local_resolver is None:
 		pytest.skip('No Test DNS Server configured')
 
+	blargh_localdomain = dns.name.from_text('blargh.localdomain')
+	ns_localdomain = dns.name.from_text('ns.localdomain')
+
 	# In the zone file, blargh.localdomain should have two TXT entries
 	cleanup_blargh = sudns01.clients.challenge.Cleanup(
-		dns.name.from_text('blargh.localdomain'),
+		blargh_localdomain,
+		sudns01.clients.challenge.Cleanup.acme_name_for_domain(blargh_localdomain)
 	)
 
 	# Run the check twice, with and without the ACME name
-	blargh_challenge_iterator1 = cleanup_blargh.get_old_challenges(
-		resolver=local_resolver,
-		acme_challenge_name=dns.name.from_text('_acme-challenge.blargh.localdomain'),
-	)
-	blargh_challenge_iterator2 = cleanup_blargh.get_old_challenges(
+	blargh_challenge_iterator = cleanup_blargh.get_old_challenges(
 		resolver=local_resolver,
 	)
-	blargh_challenges1 = set([x for x in blargh_challenge_iterator1])
-	blargh_challenges2 = set([x for x in blargh_challenge_iterator2])
-
-	# Make sure the two checks returned the same results (2 entries)
-	assert blargh_challenges1 == blargh_challenges2
-	assert len(blargh_challenges1) == 2
+	blargh_challenges = set([x for x in blargh_challenge_iterator])
 
 	# Check that we got the expected entries
+	assert len(blargh_challenges) == 2
 	expected_tuple1 = (b'single entry',)
 	expected_tuple2 = (b'entry one', b'entry two')
-	assert expected_tuple1 in blargh_challenges1
-	assert expected_tuple2 in blargh_challenges1
+	assert expected_tuple1 in blargh_challenges
+	assert expected_tuple2 in blargh_challenges
 
 	# Finally, check a record that has no old challenges
 	cleanup_ns = sudns01.clients.challenge.Cleanup(
-		dns.name.from_text('ns.localdomain'),
+		ns_localdomain,
+		sudns01.clients.challenge.Cleanup.acme_name_for_domain(ns_localdomain),
 	)
 	ns_challenge_iterator = cleanup_ns.get_old_challenges(
 		resolver=local_resolver,
@@ -233,44 +248,33 @@ def test_get_delete_message(
 	# In the zone file, blargh.localdomain should have two TXT entries
 	cleanup = sudns01.clients.challenge.Cleanup(
 		blargh_localdomain,
+		acme_challenge_blargh_localdomain,
 	)
 
 	# Go through each challenge, make a message, and check it
 	challenge_iterator = cleanup.get_old_challenges(
 		resolver=local_resolver,
-		acme_challenge_name=acme_challenge_blargh_localdomain,
 	)
 	for challenge in challenge_iterator:
 		# Generate a delete message, with and without an explicit ACME
 		# challenge name.
-		message1 = cleanup.get_delete_message(
-			record=challenge,
-			resolver=local_resolver,
-			signer=local_signer,
-			acme_challenge_name=acme_challenge_blargh_localdomain,
-		)
-		message2 = cleanup.get_delete_message(
+		message = cleanup.get_delete_message(
 			record=challenge,
 			resolver=local_resolver,
 			signer=local_signer,
 		)
 
 		# Check message class and top-level fields
-		assert isinstance(message1, dns.update.UpdateMessage)
-		assert len(message1.zone) == 1
-		assert len(message1.update) == 1
-		assert isinstance(message2, dns.update.UpdateMessage)
-		assert len(message2.zone) == 1
-		assert len(message2.update) == 1
+		assert isinstance(message, dns.update.UpdateMessage)
+		assert len(message.zone) == 1
+		assert len(message.update) == 1
 
 		# Check zone
-		zone = message1.zone[0]
-		assert zone == message2.zone[0]
+		zone = message.zone[0]
 		assert zone.name == localdomain
 
 		# Check update
-		update = message1.update[0]
-		assert update == message2.update[0]
+		update = message.update[0]
 		assert update.name == acme_challenge_blargh
 		assert update.rdclass == dns.rdataclass.IN
 		assert update.rdtype == dns.rdatatype.TXT
@@ -314,37 +318,27 @@ def test_get_challenge_add_message(
 	# Make a cleanup instance
 	cleanup = sudns01.clients.challenge.Cleanup(
 		blargh_localdomain,
+		acme_challenge_blargh_localdomain,
 	)
 
 	# Make add messages
-	message1 = cleanup.get_challenge_add_message(
-		challenge=challenge,
-		resolver=local_resolver,
-		signer=local_signer,
-		acme_challenge_name=acme_challenge_blargh_localdomain,
-	)
-	message2 = cleanup.get_challenge_add_message(
+	message = cleanup.get_challenge_add_message(
 		challenge=challenge,
 		resolver=local_resolver,
 		signer=local_signer,
 	)
 
 	# Check message class and top-level fields
-	assert isinstance(message1, dns.update.UpdateMessage)
-	assert len(message1.zone) == 1
-	assert len(message1.update) == 1
-	assert isinstance(message2, dns.update.UpdateMessage)
-	assert len(message2.zone) == 1
-	assert len(message2.update) == 1
+	assert isinstance(message, dns.update.UpdateMessage)
+	assert len(message.zone) == 1
+	assert len(message.update) == 1
 
 	# Check zone
-	zone = message1.zone[0]
-	assert zone == message2.zone[0]
+	zone = message.zone[0]
 	assert zone.name == localdomain
 
 	# Check update
-	update = message1.update[0]
-	assert update == message2.update[0]
+	update = message.update[0]
 	assert update.name == acme_challenge_blargh
 	assert update.rdclass == dns.rdataclass.IN
 	assert update.rdtype == dns.rdatatype.TXT
@@ -388,37 +382,27 @@ def test_get_challenge_delete_message(
 	# Make a cleanup instance
 	cleanup = sudns01.clients.challenge.Cleanup(
 		blargh_localdomain,
+		acme_challenge_blargh_localdomain,
 	)
 
 	# Make add messages
-	message1 = cleanup.get_challenge_delete_message(
-		challenge=challenge,
-		resolver=local_resolver,
-		signer=local_signer,
-		acme_challenge_name=acme_challenge_blargh_localdomain,
-	)
-	message2 = cleanup.get_challenge_delete_message(
+	message = cleanup.get_challenge_delete_message(
 		challenge=challenge,
 		resolver=local_resolver,
 		signer=local_signer,
 	)
 
 	# Check message class and top-level fields
-	assert isinstance(message1, dns.update.UpdateMessage)
-	assert len(message1.zone) == 1
-	assert len(message1.update) == 1
-	assert isinstance(message2, dns.update.UpdateMessage)
-	assert len(message2.zone) == 1
-	assert len(message2.update) == 1
+	assert isinstance(message, dns.update.UpdateMessage)
+	assert len(message.zone) == 1
+	assert len(message.update) == 1
 
 	# Check zone
-	zone = message1.zone[0]
-	assert zone == message2.zone[0]
+	zone = message.zone[0]
 	assert zone.name == localdomain
 
 	# Check update
-	update = message1.update[0]
-	assert update == message2.update[0]
+	update = message.update[0]
 	assert update.name == acme_challenge_blargh
 	assert update.rdclass == dns.rdataclass.IN
 	assert update.rdtype == dns.rdatatype.TXT

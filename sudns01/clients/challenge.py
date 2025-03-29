@@ -51,7 +51,6 @@ TTL: int = 10
 """The TTL to use for new DNS records.
 """
 
-ACME_CHALLENGE_LABEL = dns.name.Name(labels=('_acme-challenge',))
 
 SplitNameLabel = NewType('SplitNameLabel', dns.name.Name)
 SplitNameZone = NewType('SplitNameZone', dns.name.Name)
@@ -71,15 +70,17 @@ class Cleanup():
 	the cleanup challenge, doing the cleanup, fetching records to clean up, and
 	generating the cleanup messages.
 
-The work of signing and sending is handled separately.
+	The work of signing and sending is handled separately.
+
+	:raises ValueError: If acme_name is not a subdomain of domain.
 	"""
 
 	domain: dns.name.Name
 	"""The domain that may end up having records cleaned up.
 	"""
 
-	_acme_name: dns.name.Name | None = dataclasses.field(init=False)
-	"""Cached ACME name for domain.
+	acme_name: dns.name.Name
+	"""ACME name for domain.
 
 	This is a DNS name, formed by prepending the ACME label (`_acme-challenge`)
 	to the domain.
@@ -99,40 +100,31 @@ The work of signing and sending is handled separately.
 	"""
 
 	def __post_init__(self) -> None:
-		"""Populate internal class members (or make placeholders).
+		"""Make sure our ACME name is related to our domain, and prep split cache.
 		"""
-		# Set our two internal members to `None`
-		object.__setattr__(
-			self,
-			'_acme_name',
-			None,
-		)
+		# Check acme_name is a subdomain of domain
+		if not self.acme_name.is_subdomain(self.domain):
+			raise ValueError(f"{self.acme_name} is not a subdomain of {self.domain}")
+
+		# Set our split cache to `None`
 		object.__setattr__(
 			self,
 			'_split',
 			None,
 		)
 
-	@property
-	def acme_name(self) -> dns.name.Name:
-		"""Return the Name of the ACME challenge domain.
+	@staticmethod
+	def acme_name_for_domain(
+		domain: dns.name.Name
+	) -> dns.name.Name:
+		"""Return the Name of the ACME challenge domain for a given domain.
 		"""
-		# If we don't have the name generated yet, then generate and cache.
-		if self._acme_name is None:
-			result = ACME_CHALLENGE_LABEL.concatenate(self.domain)
-			object.__setattr__(
-				self,
-				'_acme_name',
-				result,
-			)
-			return result
-		else:
-			return self._acme_name
+		acme_challenge_label = dns.name.Name(labels=('_acme-challenge',))
+		return acme_challenge_label.concatenate(domain)
 
 	def split(
 		self,
 		resolver: sudns01.clients.resolver.ResolverClient,
-		acme_challenge_name: dns.name.Name | None = None,
 	) -> SplitName:
 		"""Split the ACME challenge name into separate label and zone parts.
 
@@ -158,13 +150,13 @@ The work of signing and sending is handled separately.
 		debug(f"In split for {self.acme_name}")
 
 		# If the ACME challenge name is what we expect, can we use cache?
-		if acme_challenge_name == self.acme_name and self._split is not None:
+		if self._split is not None:
 			debug("Using results from cache")
 			return self._split
 
 		# Use the resolver to work out our zone name
 		zone_name = resolver.get_zone_name(
-			self.acme_name,
+			self.domain,
 			raise_on_cdname=False,
 		)
 
@@ -176,13 +168,12 @@ The work of signing and sending is handled separately.
 		)
 		debug(f"Split name into {result}")
 
-		# Possibly cache, and return
-		if acme_challenge_name == self.acme_name:
-			object.__setattr__(
-				self,
-				'_split',
-				result,
-			)
+		# Cache and return
+		object.__setattr__(
+			self,
+			'_split',
+			result,
+		)
 		return result
 
 	@property
@@ -219,7 +210,6 @@ The work of signing and sending is handled separately.
 	def get_old_challenges(
 		self,
 		resolver: sudns01.clients.resolver.ResolverClient,
-		acme_challenge_name: dns.name.Name | None = None,
 	) -> collections.abc.Iterator[tuple[bytes, ...]]:
 		"""Iterate over old challenges to be cleaned up.
 
@@ -244,7 +234,7 @@ The work of signing and sending is handled separately.
 
 		# Do the lookup!
 		records = resolver.get_txt(
-			acme_challenge_name,
+			self.acme_name,
 			raise_on_cdname=False,
 		)
 		if len(records) == 0:
@@ -270,7 +260,6 @@ The work of signing and sending is handled separately.
 		record: tuple[bytes, ...],
 		resolver: sudns01.clients.resolver.ResolverClient,
 		signer: sudns01.clients.tkey.GSSTSig,
-		acme_challenge_name: dns.name.Name | None = None
 	) -> dns.update.UpdateMessage:
 		"""Get a delete-TXT-record message for a challenge.
 
@@ -286,8 +275,7 @@ The work of signing and sending is handled separately.
 
 		:returns: A ready-to-send DNS message.
 		"""
-		if acme_challenge_name is None:
-			acme_challenge_name = self.acme_name
+		debug(f"Making challenge cleanup message {record} for {self.acme_name}")
 
 		# Split our domain into label and zone parts
 		domain_parts = self.split(resolver)
@@ -317,7 +305,6 @@ The work of signing and sending is handled separately.
 		challenge: str,
 		resolver: sudns01.clients.resolver.ResolverClient,
 		signer: sudns01.clients.tkey.GSSTSig,
-		acme_challenge_name: dns.name.Name | None = None
 	) -> dns.update.UpdateMessage:
 		"""Get an add-TXT-record message for a challenge.
 
@@ -333,9 +320,7 @@ The work of signing and sending is handled separately.
 
 		:returns: A ready-to-send DNS message.
 		"""
-		if acme_challenge_name is None:
-			acme_challenge_name = self.acme_name
-		debug(f"Making challenge add message {challenge} for {acme_challenge_name}")
+		debug(f"Making challenge add message {challenge} for {self.acme_name}")
 
 		# Split our domain into label and zone parts
 		domain_parts = self.split(resolver)
@@ -389,9 +374,7 @@ The work of signing and sending is handled separately.
 
 		:returns: A ready-to-send DNS message.
 		"""
-		if acme_challenge_name is None:
-			acme_challenge_name = self.acme_name
-		debug(f"Making challenge delete message {challenge} for {acme_challenge_name}")
+		debug(f"Making challenge delete message {challenge} for {self.acme_name}")
 
 		# Split our domain into label and zone parts
 		domain_parts = self.split(resolver)

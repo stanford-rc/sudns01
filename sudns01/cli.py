@@ -242,6 +242,7 @@ def main_common(
 	# Prep for cleanup
 	cleanup = sudns01.clients.challenge.Cleanup(
 		domain=TARGET_NAME,
+		acme_name=sudns01.clients.challenge.Cleanup.acme_name_for_domain(TARGET_NAME),
 	)
 	if args.cleanup:
 		# Tell the user what challenge to provide
@@ -326,7 +327,6 @@ def main_common(
 	if args.cleanup2 is not None:
 		old_challenge_iterator = cleanup.get_old_challenges(
 			resolver=dnslookup,
-			acme_challenge_name=acme_challenge_name,
 		)
 		for old_challenge_tuple in old_challenge_iterator:
 			# To ensure log messages print, make a tuple of strings.
