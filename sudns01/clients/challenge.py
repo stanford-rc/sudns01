@@ -31,6 +31,7 @@ import dns.name
 import dns.rdataclass
 import dns.rdatatype
 import dns.rdtypes.ANY.TXT
+import dns.update
 
 # Local imports
 import sudns01.clients.exceptions
@@ -45,6 +46,10 @@ warn = logger.warning
 info = logger.info
 debug = logger.debug
 
+
+TTL: int = 10
+"""The TTL to use for new DNS records.
+"""
 
 ACME_CHALLENGE_LABEL = dns.name.Name(labels=('_acme-challenge',))
 
@@ -304,3 +309,112 @@ The work of signing and sending is handled separately.
 		)
 
 		return message
+
+	def get_challenge_add_message(
+		self,
+		challenge: str,
+		resolver: sudns01.clients.resolver.ResolverClient,
+		signer: sudns01.clients.tkey.GSSTSig,
+		acme_challenge_name: dns.name.Name | None = None
+	) -> dns.update.UpdateMessage:
+		"""Get an add-TXT-record message for a challenge.
+
+		:param challenge: The challenge string to add.
+
+		:param resolver: A DNS resolver, to look up the domain's zone.
+
+		:param signer: A TSIG signer for the message.
+
+		:param acme_challenge_name: The DNS name to use for queries.  If not
+		provided, `_acme-challenge.` will be prepended to the existing
+		domain.
+
+		:returns: A ready-to-send DNS message.
+		"""
+		if acme_challenge_name is None:
+			acme_challenge_name = self.acme_name
+
+		# Split our domain into label and zone parts
+		domain_parts = self.split(resolver)
+
+		# Prepare our challenge record
+		# Per RFC 8555 §8.4, challenge tokens only contain characters from the
+		# base64url alphabet, which is a subset of ASCII.  So, we can encode as
+		# ASCII.
+		challenge_rdata = dns.rdtypes.ANY.TXT.TXT(
+			rdclass=dns.rdataclass.IN,
+			rdtype=dns.rdatatype.TXT,
+			strings=(
+				challenge.encode('ASCII'),
+			),
+		)
+
+		# Add a new ACME Challenge record
+
+		# Construct our add request
+		challenge_add = dns.update.UpdateMessage(
+			zone=domain_parts.zone,
+			rdclass=dns.rdataclass.IN,
+			**signer.dnspython_args,
+		)
+		challenge_add.add(
+			domain_parts.label,
+			TTL,
+			challenge_rdata,
+		)
+
+		return challenge_add
+
+	def get_challenge_delete_message(
+		self,
+		challenge: str,
+		resolver: sudns01.clients.resolver.ResolverClient,
+		signer: sudns01.clients.tkey.GSSTSig,
+		acme_challenge_name: dns.name.Name | None = None
+	) -> dns.update.UpdateMessage:
+		"""Get an delete-TXT-record message for a challenge.
+
+		:param challenge: The challenge string to delete.
+
+		:param resolver: A DNS resolver, to look up the domain's zone.
+
+		:param signer: A TSIG signer for the message.
+
+		:param acme_challenge_name: The DNS name to use for queries.  If not
+		provided, `_acme-challenge.` will be prepended to the existing
+		domain.
+
+		:returns: A ready-to-send DNS message.
+		"""
+		if acme_challenge_name is None:
+			acme_challenge_name = self.acme_name
+
+		# Split our domain into label and zone parts
+		domain_parts = self.split(resolver)
+
+		# Prepare our challenge record
+		# Per RFC 8555 §8.4, challenge tokens only contain characters from the
+		# base64url alphabet, which is a subset of ASCII.  So, we can encode as
+		# ASCII.
+		challenge_rdata = dns.rdtypes.ANY.TXT.TXT(
+			rdclass=dns.rdataclass.IN,
+			rdtype=dns.rdatatype.TXT,
+			strings=(
+				challenge.encode('ASCII'),
+			),
+		)
+
+		# Add a new ACME Challenge record
+
+		# Construct our add request
+		challenge_delete = dns.update.UpdateMessage(
+			zone=domain_parts.zone,
+			rdclass=dns.rdataclass.IN,
+			**signer.dnspython_args,
+		)
+		challenge_delete.delete(
+			domain_parts.label,
+			challenge_rdata,
+		)
+
+		return challenge_delete

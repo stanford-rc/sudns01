@@ -282,3 +282,151 @@ def test_get_delete_message(
 		assert rdata.rdclass == dns.rdataclass.IN
 		assert rdata.rdtype == dns.rdatatype.TXT
 		assert rdata.strings == challenge
+
+def test_get_challenge_add_message(
+	local_resolver,
+	local_signer,
+) -> None:
+	"""Make sure we get the challenge add messages we expect.
+	"""
+	if local_resolver is None:
+		pytest.skip('No Test DNS Server configured')
+	if local_signer is None:
+		pytest.skip('No Test KDC configured')
+
+	# Make some DNS name components
+	acme_challenge = dns.name.Name(labels=('_acme-challenge',))
+	blargh = dns.name.Name(labels=('blargh',))
+	localdomain = dns.name.from_text('localdomain')
+
+	acme_challenge_blargh = acme_challenge + blargh
+	acme_challenge_blargh_localdomain = acme_challenge_blargh + localdomain
+	blargh_localdomain = blargh + localdomain
+
+	# Make a string to use as a challenge.  We'll include every URL-safe Base64
+	# character in the string.
+	challenge = (
+		'ABCDEFGHIJKLMNOPQRSTUVWXYZ' +
+		'abcdefghijklmnopqrstuvwxyz' +
+		'1234567890-_'
+	)
+
+	# Make a cleanup instance
+	cleanup = sudns01.clients.challenge.Cleanup(
+		blargh_localdomain,
+	)
+
+	# Make add messages
+	message1 = cleanup.get_challenge_add_message(
+		challenge=challenge,
+		resolver=local_resolver,
+		signer=local_signer,
+		acme_challenge_name=acme_challenge_blargh_localdomain,
+	)
+	message2 = cleanup.get_challenge_add_message(
+		challenge=challenge,
+		resolver=local_resolver,
+		signer=local_signer,
+	)
+
+	# Check message class and top-level fields
+	assert isinstance(message1, dns.update.UpdateMessage)
+	assert len(message1.zone) == 1
+	assert len(message1.update) == 1
+	assert isinstance(message2, dns.update.UpdateMessage)
+	assert len(message2.zone) == 1
+	assert len(message2.update) == 1
+
+	# Check zone
+	zone = message1.zone[0]
+	assert zone == message2.zone[0]
+	assert zone.name == localdomain
+
+	# Check update
+	update = message1.update[0]
+	assert update == message2.update[0]
+	assert update.name == acme_challenge_blargh
+	assert update.rdclass == dns.rdataclass.IN
+	assert update.rdtype == dns.rdatatype.TXT
+	assert update.deleting == None
+	assert len(update) == 1
+
+	# Check update rdata
+	rdata = update[0]
+	assert rdata.rdclass == dns.rdataclass.IN
+	assert rdata.rdtype == dns.rdatatype.TXT
+	assert rdata.strings == (challenge.encode('ASCII'),)
+
+def test_get_challenge_delete_message(
+	local_resolver,
+	local_signer,
+) -> None:
+	"""Make sure we get the challenge delete messages we expect.
+	"""
+	if local_resolver is None:
+		pytest.skip('No Test DNS Server configured')
+	if local_signer is None:
+		pytest.skip('No Test KDC configured')
+
+	# Make some DNS name components
+	acme_challenge = dns.name.Name(labels=('_acme-challenge',))
+	blargh = dns.name.Name(labels=('blargh',))
+	localdomain = dns.name.from_text('localdomain')
+
+	acme_challenge_blargh = acme_challenge + blargh
+	acme_challenge_blargh_localdomain = acme_challenge_blargh + localdomain
+	blargh_localdomain = blargh + localdomain
+
+	# Make a string to use as a challenge.  We'll include every URL-safe Base64
+	# character in the string.
+	challenge = (
+		'ABCDEFGHIJKLMNOPQRSTUVWXYZ' +
+		'abcdefghijklmnopqrstuvwxyz' +
+		'1234567890-_'
+	)
+
+	# Make a cleanup instance
+	cleanup = sudns01.clients.challenge.Cleanup(
+		blargh_localdomain,
+	)
+
+	# Make add messages
+	message1 = cleanup.get_challenge_delete_message(
+		challenge=challenge,
+		resolver=local_resolver,
+		signer=local_signer,
+		acme_challenge_name=acme_challenge_blargh_localdomain,
+	)
+	message2 = cleanup.get_challenge_delete_message(
+		challenge=challenge,
+		resolver=local_resolver,
+		signer=local_signer,
+	)
+
+	# Check message class and top-level fields
+	assert isinstance(message1, dns.update.UpdateMessage)
+	assert len(message1.zone) == 1
+	assert len(message1.update) == 1
+	assert isinstance(message2, dns.update.UpdateMessage)
+	assert len(message2.zone) == 1
+	assert len(message2.update) == 1
+
+	# Check zone
+	zone = message1.zone[0]
+	assert zone == message2.zone[0]
+	assert zone.name == localdomain
+
+	# Check update
+	update = message1.update[0]
+	assert update == message2.update[0]
+	assert update.name == acme_challenge_blargh
+	assert update.rdclass == dns.rdataclass.IN
+	assert update.rdtype == dns.rdatatype.TXT
+	assert update.deleting == dns.rdataclass.NONE
+	assert len(update) == 1
+
+	# Check update rdata
+	rdata = update[0]
+	assert rdata.rdclass == dns.rdataclass.IN
+	assert rdata.rdtype == dns.rdatatype.TXT
+	assert rdata.strings == (challenge.encode('ASCII'),)
