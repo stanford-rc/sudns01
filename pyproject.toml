@@ -123,6 +123,7 @@ addopts = [
 	"--cov", # Generate coverage data
 	"--import-mode=importlib", # Use importlib
 	"--ignore=lib", # Ignore venv's lib directory
+	"--ignore=lib64",
 	"--mypy", # Run all files through MyPy
 	"--strict-markers", # Error on unknown markers
 ]
