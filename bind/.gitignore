@@ -9,3 +9,4 @@ managed-keys.bind.jnl
 named.pid
 named.run
 zone
+zone.jnl
