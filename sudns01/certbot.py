@@ -18,9 +18,11 @@
 import abc
 import argparse
 import dataclasses
+import humanfriendly
 import importlib.metadata
 import logging
 import pathlib
+import time
 from typing import Any, Callable
 
 # PyPi imports
@@ -28,12 +30,15 @@ import acme
 import certbot
 import certbot.errors
 import certbot.plugins.dns_common
+import dns.rcode
 
 # local imports
+import sudns01.clients.challenge
 import sudns01.clients.exceptions
 import sudns01.clients.query
 import sudns01.clients.resolver
 import sudns01.clients.tkey
+import sudns01.wait
 
 # Set up logging
 # certbot logs debug-level logs to a file.  As for standard output…
@@ -328,9 +333,6 @@ class BaseAuthenticator(
 			error('resolver has not been set yet!')
 			raise certbot.errors.PluginError('The Authenticator plugin has not been fully initialized.')
 
-		# Check if we have a cleanup challenge, and if it's valid.
-		# TODO
-
 		# Set up a dnsupdate client
 		try:
 			nsupdate_server_ips = self.gssconf.resolver.get_ip(
@@ -381,7 +383,7 @@ class BaseAuthenticator(
 			if self.get_config('keytab') is None:
 				dnsupdate_info_str += 'no keytab.'
 			else:
-				dnsupdate_info_str += 'keytab from ' + self.get_config('keytab')
+				dnsupdate_info_str += 'keytab from ' + str(self.get_config('keytab'))
 			dnsupdate_info_str += '.'
 		info(dnsupdate_info_str)
 
@@ -438,21 +440,100 @@ class BaseAuthenticator(
 				"Your GSSAPI implementation does not have support for manipulating credential stores.  Try again without the ccache and keytab options."
 			)
 
-		# Do any old-record cleanup, if we're supposed to
-		# TODO
+		# Set up our challenge manager
+		challenge_mgr = sudns01.clients.challenge.Challenge(
+			domain=dns.name.from_text(domain),
+			acme_name=dns.name.from_text(validation_name),
+		)
+
+		# Do cleanup, if appropriate
+		if False:
+			if not challenge_mgr.is_cleanup_challenge_valid(''):
+				pass
+			else:
+				for old_challenge in challenge_mgr.get_old_challenges(
+					self.gssconf.resolver
+				):
+					message = challenge_mgr.get_challenge_cleanup_message(
+						record=old_challenge,
+						resolver=self.gssconf.resolver,
+						signer=signer,
+					)
+					try:
+						self.gssconf.nsupdate.query(message)
+					except sudns01.clients.exceptions.NoServers:
+						raise certbot.errors.PluginError(
+							f"During cleanup of {old_challenge!s}, ran out of DNS servers to try"
+						)
+					except sudns01.clients.exceptions.DNSError:
+						raise certbot.errors.PluginError(
+							f"During cleanup of {old_challenge!s}, got a (hopefully temporary) " +
+							"DNS error.  Try again later!"
+						)
+					if message.rcode() != dns.rcode.NOERROR:
+						raise certbot.errors.PluginError(
+							f"During cleanup of {old_challenge!s}, received unexpected error " +
+							f"{message.rcode().name} from DNS server."
+						)
 
 		# Prepare our challenge record
-		# TODO
+		challenge_add = challenge_mgr.get_challenge_add_message(
+			challenge=validation,
+			resolver=self.gssconf.resolver,
+			signer=signer,
+		)
 
 		# Send the request
-		# TODO
-		#self.gssconf.nsupdate_completed.add(domain)
+		try:
+			info(f"Sending nsupdate request for {domain}")
+			dns_add_response = self.gssconf.nsupdate.query(challenge_add)
+			self.gssconf.nsupdate_completed.add(domain)
+		except sudns01.clients.exceptions.NoServers:
+			raise certbot.errors.PluginError(
+				f"During nsupdate for {domain}, ran out of DNS servers to try"
+			)
+		except sudns01.clients.exceptions.DNSError:
+			raise certbot.errors.PluginError(
+				f"During nsupdate for {domain}, got a (hopefully temporary) " +
+				"DNS error.  Try again later!"
+			)
+		if dns_add_response.rcode() != dns.rcode.NOERROR:
+			raise certbot.errors.PluginError(
+				f"During nsupdate for {domain}, received unexpected error " +
+				f"{dns_add_response.rcode().name} from DNS server."
+			)
 
 		# Close our current signer
 		signer.close()
 
 		# Do wait-check loop
-		# TODO
+		waiter = self._waiter
+		in_dns = False
+		certbot.display.util.notify(
+			f"Authentication challenge for {domain} has been pushed to DNS!\n" +
+			"Waiting for the challenge to appear in DNS."
+		)
+		while not in_dns:
+			step = waiter.step()
+			certbot.display.util.notify(
+				'Waiting for ' + humanfriendly.format_timespan(step)
+			)
+			time.sleep(step.total_seconds())
+			in_dns = challenge_mgr.is_challenge_in_dns(
+				challenge=validation,
+				resolver=self.gssconf.resolver,
+			)
+
+		# After all that, we're done!
+		return
+
+	@property
+	@abc.abstractmethod
+	def _waiter(self) -> sudns01.wait.Waiter:
+		"""Return a object to tell us how long to wait.
+		"""
+		... # pragma: no cover
+
 
 	def auth_hint(
 		self,
@@ -494,9 +575,12 @@ class BaseAuthenticator(
 		"""
 		debug(f"In cleanup for {domain}")
 
-		# Make sure we have a nsupdate
+		# Make sure we have a nsupdate and a resolver
 		if self.gssconf.nsupdate is None:
 			error('nsupdate has not been set yet!')
+			raise certbot.errors.PluginError('The Authenticator plugin has not been fully initialized.')
+		if self.gssconf.resolver is None:
+			error('resolver has not been set yet!')
 			raise certbot.errors.PluginError('The Authenticator plugin has not been fully initialized.')
 
 		# Skip doing cleanup if we never did an nsupdate for this domain
@@ -516,8 +600,36 @@ class BaseAuthenticator(
 				"Your GSSAPI implementation does not have support for manipulating credential stores.  Try again without the ccache and keytab options."
 			)
 
-		# Do the cleanup
-		# TODO
+		# Set up our challenge manager
+		challenge_mgr = sudns01.clients.challenge.Challenge(
+			domain=dns.name.from_text(domain),
+			acme_name=dns.name.from_text(validation_name),
+		)
+
+		# Create the Delete request
+		challenge_delete = challenge_mgr.get_challenge_delete_message(
+			challenge=validation,
+			resolver=self.gssconf.resolver,
+			signer=signer,
+		)
+
+		# Send out the request
+		try:
+			dns_delete_response = self.gssconf.nsupdate.query(challenge_delete)
+		except sudns01.clients.exceptions.NoServers:
+			raise certbot.errors.PluginError(
+				f"During nsupdate for {domain}, ran out of DNS servers to try"
+			)
+		except sudns01.clients.exceptions.DNSError:
+			raise certbot.errors.PluginError(
+				f"During nsupdate for {domain}, got a (hopefully temporary) " +
+				"DNS error.  Try again later!"
+			)
+		if dns_delete_response.rcode() != dns.rcode.NOERROR:
+			raise certbot.errors.PluginError(
+				f"During nsupdate for {domain}, received unexpected error " +
+				f"{dns_delete_response.rcode().name} from DNS server."
+			)
 
 		# Close the signer
 		signer.close()
@@ -576,6 +688,12 @@ class GenericAuthenticator(BaseAuthenticator):
 		if wait < 0:
 			raise certbot.errors.PluginError(f"--{self.cli_prefix}-wait must be non-negative")
 
+	@property
+	def _waiter(self) -> sudns01.wait.Waiter:
+		return sudns01.wait.FixedWaiter(
+			how_long=self.get_config('wait')
+		)
+
 class StanfordAuthenticator(BaseAuthenticator):
 	"""Stanford-specific Authenticator configuration.
 
@@ -615,3 +733,7 @@ class StanfordAuthenticator(BaseAuthenticator):
 			help=argparse.SUPPRESS,
 			default='acme-dns.stanford.edu',
 		)
+
+	@property
+	def _waiter(self) -> sudns01.wait.Waiter:
+		return sudns01.wait.StanfordWaiter()
