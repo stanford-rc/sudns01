@@ -69,6 +69,7 @@ dependencies = [
 	"certbot <4.0, >=3.2.0",
     "dnspython <3.0, >=2.7.0",
     "gssapi <2.0, >=1.8.0",
+	"humanfriendly <11.0, >=10.0",
 ]
 
 # 3: Optional dependencies.
@@ -83,6 +84,7 @@ test = [
 	"pytest <9.0, >=8.2.1", # 8.2.1 adds support for Python 3.13+
 	"pytest-cov <7.0, >=6.0.0",
 	"pytest-mypy <2.0, >=1.0.0",
+	"types-humanfriendly",
 ]
 
 # Before we move on, finish up the project metadata tables…
