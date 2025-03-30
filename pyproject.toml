@@ -1,0 +1,129 @@
+# vim: ts=4 sw=4 noet
+
+# This is a Python project!
+
+# Thanks to PEP 518 and PEP 621, we can have (almost all) of the setup data in
+# this file!
+# NOTE: This requires that you have an up-to-date `pip`.  It helps that this
+# software requires at least Python 3.10…
+
+# That is why you won't find any `setup.py` script here.  Everything that can
+# be in this file will be.  Whatever cannot be in this file, will be present in
+# another file (like `setup.cfg`).
+
+# Start by describing how the package is built.
+
+# Build using setuptools.
+# NOTE: Setuptools support for pyproject.toml began in version 61.0.0.
+[build-system]
+requires = [
+    "setuptools >= 62.1.0",
+]
+build-backend = "setuptools.build_meta"
+
+# Next, put in the project metadata!
+[project]
+
+# Name and version (which supports using `file:`)
+name = "sudns01"
+version = "0.0.1"
+
+# The authors list has its own table, so it has to come later…
+
+# The long_description is now `readme`, and takes a path by default.
+# The license can also be specified as a file path.
+description = "TODO"
+readme = "README.rst"
+license = { text = "Apache-2.0" }
+
+# Classifiers is a typical array
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: Console",
+	"Environment :: Plugins",
+    "Framework :: Sphinx",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Security",
+	"Topic :: System :: Networking",
+	"Topic :: System :: Systems Administration",
+    "Typing :: Typed",
+]
+
+# URLs is its own table, so it has to come later…
+
+# Next up are our dependencies, in this order:
+
+# 1: Python
+requires-python = "<4.0, >=3.10"
+
+# 2: Required dependencies.
+dependencies = [
+	"certbot <4.0, >=3.2.0",
+    "dnspython <3.0, >=2.7.0",
+    "gssapi <2.0, >=1.8.0",
+]
+
+# 3: Optional dependencies.
+[project.optional-dependencies]
+docs = [
+	"sphinx <5.0, >=4.5.0",
+	"sphinx-rtd-theme",
+]
+
+test = [
+	"mypy <2.0, >=1.12", # 1.12 adds support for Python 3.13
+	"pytest <9.0, >=8.2.1", # 8.2.1 adds support for Python 3.13+
+	"pytest-cov <7.0, >=6.0.0",
+	"pytest-mypy <2.0, >=1.0.0",
+]
+
+# Before we move on, finish up the project metadata tables…
+
+# Each author gets its own [[project.authors]] block
+[[project.authors]]
+"name" = "A. Karl Kornel"
+"email" = "akkornel@stanford.edu"
+
+# URLs is a table, just like before.
+[project.urls]
+    "Homepage" = "https://github.com/stanford-rc/sudns01"
+    "Bug Tracker" = "https://github.com/stanford-rc/sudns01/issues"
+    "Source Code" = "https://github.com/stanford-rc/sudns01/tree/main1"
+    "Documentation" = "https://stanford-rc.github.io/sudns01/"
+
+# Define the packages we install, and where to find them.
+
+[tool.setuptools]
+packages = ["sudns01"]
+
+# Define our CLI commands and plugins
+
+[project.scripts]
+acme-gss-tsig = "sudns01.cli:main_generic"
+acme-sudns01 = "sudns01.cli:main_stanford"
+
+[project.entry-points."certbot.plugins"]
+gss-tsig = "sudns01.certbot:GenericAuthenticator"
+sudns01 = "sudns01.certbot:StanfordAuthenticator"
+
+# Finally, do tool-specific configuration!
+
+[tool.pytest.ini_options]
+addopts = [
+	"--cov", # Generate coverage data
+	"--import-mode=importlib", # Use importlib
+	"--ignore=lib", # Ignore venv's lib directory
+	"--mypy", # Run all files through MyPy
+	"--strict-markers", # Error on unknown markers
+]
+pythonpath = [
+	".",
+]
