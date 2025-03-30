@@ -35,10 +35,12 @@ install whatever the latest version is available:
 * On macOS with MacPorts, install the `kerberos5` package.
 
 * On Debian (and derivatives), install the `krb5-admin-server`, `krb5-kdc`, and
-  `krb5-user` packages.
+  `krb5-user` packages.  You should also install the `libkrb5-dev` package, as
+  it is needed by python-gssapi.
 
 * On Red Hat Enterprise Linux (and derivatives), install the `krb5-libs`,
-  `krb5-server`, and `krb5-workstation` packages.
+  `krb5-server`, and `krb5-workstation` packages.  You should also install the
+  `krb5-devel` package, as it is needed by python-gssapi.
 
 * On Arch Linux, install the `krb5` package.
 
