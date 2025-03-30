@@ -53,10 +53,6 @@ jobs:
         os:
           - "ubuntu-latest"
 
-    permissions:
-      security-events: write
-      packages: read
-
     steps:
     - name: Install non-Python dependencies (Ubuntu)
       if: ${{ runner.os == 'Linux' }}
@@ -108,6 +104,51 @@ jobs:
     - name: Run tests
       run: |
         make test
+
+  codeql:
+    name: Run CodeQL on ubuntu-latest & Python 3.13
+    needs: pytest
+    runs-on: ubuntu-latest
+
+    permissions:
+      security-events: write
+      packages: read
+
+    steps:
+    - name: Install non-Python dependencies (Ubuntu)
+      if: ${{ runner.os == 'Linux' }}
+      run: |
+        # Install BIND & Kerberos
+        sudo apt install -y bind9 krb5-admin-server krb5-kdc krb5-user libkrb5-dev
+
+        # Stop & disable system named
+        sudo systemctl disable --now named
+
+        # Add AppArmor config to allow named into our workspace
+        cat - > /tmp/usr.sbin.named <<EOF
+        # Allow read/write in bind's space in the workdir
+        ${{ github.workspace }}/ rwk,
+        ${{ github.workspace }}/** rwk,
+        EOF
+        sudo cp /tmp/usr.sbin.named /etc/apparmor.d/local/usr.sbin.named
+        cat /etc/apparmor.d/local/usr.sbin.named
+        sudo apparmor_parser -r /etc/apparmor.d/usr.sbin.named
+
+      # This is v4 of the action
+    - name: Check out code
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      # This is v5.5.0 of the action
+    - name: Set up Python
+      uses: actions/setup-python@8d9ed9ac5c53483de85588cdf95a591a75ab9f55
+      with:
+        python-version: "3.13"
+        cache: 'pip'
+
+    - name: Install dependencies for testing
+      run: |
+        ls -l
+        make .installed-test-editable
 
       # This is v3.28.13
     - name: CodeQL Init
