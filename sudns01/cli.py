@@ -235,23 +235,23 @@ def main_common(
 	CHALLENGE: str = args.challenge
 	dns_queries_on_udp = args.udp
 
-	# Prep for cleanup
-	cleanup = sudns01.clients.challenge.Cleanup(
+	# Make our challenge instance
+	challenge = sudns01.clients.challenge.Challenge(
 		domain=TARGET_NAME,
-		acme_name=sudns01.clients.challenge.Cleanup.acme_name_for_domain(TARGET_NAME),
+		acme_name=sudns01.clients.challenge.Challenge.acme_name_for_domain(TARGET_NAME),
 	)
 	if args.cleanup:
 		# Tell the user what challenge to provide
 		print('This option will remove other ACME Challenge TXT records for {args.name}.')
 		print('THIS CAN BE DANGEROUS!  The TXT records might be in place for other reasons.')
-		print(f"To cleanup anyway, change `--cleanup` to `--cleanup2 {cleanup.challenge}` and try again.")
+		print(f"To cleanup anyway, change `--cleanup` to `--cleanup2 {challenge.cleanup_challenge}` and try again.")
 		sys.exit(1)
 	if args.cleanup2 is not None:
 		# The user has set --cleanup2.  What challenge do we expect?
-		debug(f"Found cleanup, expecting challenge {cleanup.challenge}")
+		debug(f"Found cleanup, expecting challenge {challenge.cleanup_challenge}")
 
 		# If the user provided a challenge, and it does _not_ match, then tell them.
-		if not cleanup.is_challenge_valid(args.cleanup2):
+		if not challenge.is_cleanup_challenge_valid(args.cleanup2):
 			print(f"You provided the wrong cleanup challenge for {args.name}.")
 			print(f"Change `--cleanup2 {args.cleanup2}` to `--cleanup` and try again.")
 			sys.exit(1)
@@ -307,7 +307,7 @@ def main_common(
 
 	# Do cleanup first, before issuing our challenge
 	if args.cleanup2 is not None:
-		old_challenge_iterator = cleanup.get_old_challenges(
+		old_challenge_iterator = challenge.get_old_challenges(
 			resolver=dnslookup,
 		)
 		for old_challenge_tuple in old_challenge_iterator:
@@ -318,7 +318,7 @@ def main_common(
 			)
 			info(f"Cleaning up old challenge {old_challenge_str}")
 
-			old_challenge_delete = cleanup.get_delete_message(
+			old_challenge_delete = challenge.get_challenge_cleanup_message(
 				record=old_challenge_tuple,
 				resolver=dnslookup,
 				signer=signer,
@@ -337,7 +337,7 @@ def main_common(
 				sys.exit(2)
 
 	# Get our challenge
-	challenge_add = cleanup.get_challenge_add_message(
+	challenge_add = challenge.get_challenge_add_message(
 		challenge=CHALLENGE,
 		resolver=dnslookup,
 		signer=signer,
@@ -372,7 +372,7 @@ def main_common(
 	signer.close()
 
 	# Wait for the record to appear via the system resolver
-	while not cleanup.is_challenge_in_dns(
+	while not challenge.is_challenge_in_dns(
 			challenge=CHALLENGE,
 			resolver=dnslookup,
 	):
@@ -393,7 +393,7 @@ def main_common(
 	)
 
 	# Create the Delete request
-	challenge_delete = cleanup.get_challenge_delete_message(
+	challenge_delete = challenge.get_challenge_delete_message(
 		challenge=CHALLENGE,
 		resolver=dnslookup,
 		signer=signer,

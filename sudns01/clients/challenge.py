@@ -63,12 +63,13 @@ class SplitName(NamedTuple):
 
 # Make a class for cleanup-related stuff
 @dataclasses.dataclass(frozen=True)
-class Cleanup():
-	"""Manage cleanup for a single domain
+class Challenge():
+	"""Manage challenges for a single domain
 
-	This handles the cleanup work for a single domain.  It handles generating
-	the cleanup challenge, doing the cleanup, fetching records to clean up, and
-	generating the cleanup messages.
+	This handles the challenge (and challenge cleanup) for a single domain.  It
+	handles generating the challenge-add and -delete messages, make cleanup
+	challenges & messages, fetching records to clean up, and checking if a
+	challenge made it into DNS.
 
 	The work of signing and sending is handled separately.
 
@@ -177,7 +178,7 @@ class Cleanup():
 		return result
 
 	@property
-	def challenge(self) -> str:
+	def cleanup_challenge(self) -> str:
 		"""Return the challenge string the user needs to provide, in order to do a cleanup.
 
 		If the user wants to do a cleanup of old TXT records, they must provide
@@ -190,7 +191,7 @@ class Cleanup():
 		)
 		return challenge_str
 
-	def is_challenge_valid(
+	def is_cleanup_challenge_valid(
 		self,
 		challenge: str,
 	) -> bool:
@@ -204,8 +205,8 @@ class Cleanup():
 
 		:returns: True if the provided challenge is correct; False otherwise.
 		"""
-		debug(f"Checking provided challenge {challenge} against {self.challenge}")
-		return (True if challenge == self.challenge else False)
+		debug(f"Checking provided challenge {challenge} against {self.cleanup_challenge}")
+		return (True if challenge == self.cleanup_challenge else False)
 
 	def get_old_challenges(
 		self,
@@ -255,7 +256,7 @@ class Cleanup():
 		# All done!
 		return
 
-	def get_delete_message(
+	def get_challenge_cleanup_message(
 		self,
 		record: tuple[bytes, ...],
 		resolver: sudns01.clients.resolver.ResolverClient,

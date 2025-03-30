@@ -147,12 +147,12 @@ def test_acme_subdomain() -> None:
 	# Use our test cases.  Creating the instance with parameters in proper
 	# order should be fine; in reverse order, we should get a ValueError.
 	for case in cases:
-		sudns01.clients.challenge.Cleanup(
+		sudns01.clients.challenge.Challenge(
 			case.domain,
 			case.acme_name,
 		)
 		with pytest.raises(ValueError):
-			sudns01.clients.challenge.Cleanup(
+			sudns01.clients.challenge.Challenge(
 				case.acme_name,
 				case.domain,
 			)
@@ -162,7 +162,7 @@ def test_acme_name() -> None:
 	"""
 
 	for case in cases:
-		assert case.acme_name == sudns01.clients.challenge.Cleanup.acme_name_for_domain(case.domain)
+		assert case.acme_name == sudns01.clients.challenge.Challenge.acme_name_for_domain(case.domain)
 
 def test_split(local_resolver) -> None:
 	"""Make sure domain splitting works correctly
@@ -173,9 +173,9 @@ def test_split(local_resolver) -> None:
 	blargh_localdomain = dns.name.from_text('blargh.localdomain')
 
 	# In the zone file, blargh.localdomain should have two TXT entries
-	cleanup_blargh = sudns01.clients.challenge.Cleanup(
+	cleanup_blargh = sudns01.clients.challenge.Challenge(
 		blargh_localdomain,
-		sudns01.clients.challenge.Cleanup.acme_name_for_domain(blargh_localdomain)
+		sudns01.clients.challenge.Challenge.acme_name_for_domain(blargh_localdomain)
 	)
 
 	# Run split
@@ -197,13 +197,13 @@ def test_challenge() -> None:
 	"""
 
 	for case in cases:
-		cleanup = sudns01.clients.challenge.Cleanup(
+		challenge = sudns01.clients.challenge.Challenge(
 			case.domain,
 			case.acme_name,
 		)
-		assert cleanup.challenge == case.challenge
-		assert cleanup.is_challenge_valid(case.challenge) is True
-		assert cleanup.is_challenge_valid('0xdeadbeef') is False
+		assert challenge.cleanup_challenge == case.challenge
+		assert challenge.is_cleanup_challenge_valid(case.challenge) is True
+		assert challenge.is_cleanup_challenge_valid('0xdeadbeef') is False
 
 def test_get_old_challenges(
 	local_resolver
@@ -217,13 +217,13 @@ def test_get_old_challenges(
 	ns_localdomain = dns.name.from_text('ns.localdomain')
 
 	# In the zone file, blargh.localdomain should have two TXT entries
-	cleanup_blargh = sudns01.clients.challenge.Cleanup(
+	challenge_blargh = sudns01.clients.challenge.Challenge(
 		blargh_localdomain,
-		sudns01.clients.challenge.Cleanup.acme_name_for_domain(blargh_localdomain)
+		sudns01.clients.challenge.Challenge.acme_name_for_domain(blargh_localdomain)
 	)
 
 	# Run the check twice, with and without the ACME name
-	blargh_challenge_iterator = cleanup_blargh.get_old_challenges(
+	blargh_challenge_iterator = challenge_blargh.get_old_challenges(
 		resolver=local_resolver,
 	)
 	blargh_challenges = set([x for x in blargh_challenge_iterator])
@@ -236,21 +236,21 @@ def test_get_old_challenges(
 	assert expected_tuple2 in blargh_challenges
 
 	# Finally, check a record that has no old challenges
-	cleanup_ns = sudns01.clients.challenge.Cleanup(
+	challenge_ns = sudns01.clients.challenge.Challenge(
 		ns_localdomain,
-		sudns01.clients.challenge.Cleanup.acme_name_for_domain(ns_localdomain),
+		sudns01.clients.challenge.Challenge.acme_name_for_domain(ns_localdomain),
 	)
-	ns_challenge_iterator = cleanup_ns.get_old_challenges(
+	ns_challenge_iterator = challenge_ns.get_old_challenges(
 		resolver=local_resolver,
 	)
 	ns_challenges = set([x for x in ns_challenge_iterator])
 	assert len(ns_challenges) == 0
 
-def test_get_delete_message(
+def test_get_cleanup_message(
 	local_resolver,
 	local_signer,
 ) -> None:
-	"""Make sure we get the delete messages we expect.
+	"""Make sure we get the challenge cleanup messages we expect.
 	"""
 	if local_resolver is None:
 		pytest.skip('No Test DNS Server configured')
@@ -267,20 +267,20 @@ def test_get_delete_message(
 	blargh_localdomain = blargh + localdomain
 
 	# In the zone file, blargh.localdomain should have two TXT entries
-	cleanup = sudns01.clients.challenge.Cleanup(
+	challenge = sudns01.clients.challenge.Challenge(
 		blargh_localdomain,
 		acme_challenge_blargh_localdomain,
 	)
 
 	# Go through each challenge, make a message, and check it
-	challenge_iterator = cleanup.get_old_challenges(
+	challenge_iterator = challenge.get_old_challenges(
 		resolver=local_resolver,
 	)
-	for challenge in challenge_iterator:
+	for old_challenge in challenge_iterator:
 		# Generate a delete message, with and without an explicit ACME
 		# challenge name.
-		message = cleanup.get_delete_message(
-			record=challenge,
+		message = challenge.get_challenge_cleanup_message(
+			record=old_challenge,
 			resolver=local_resolver,
 			signer=local_signer,
 		)
@@ -306,7 +306,7 @@ def test_get_delete_message(
 		rdata = update[0]
 		assert rdata.rdclass == dns.rdataclass.IN
 		assert rdata.rdtype == dns.rdatatype.TXT
-		assert rdata.strings == challenge
+		assert rdata.strings == old_challenge
 
 def test_get_challenge_add_message(
 	local_resolver,
@@ -330,21 +330,21 @@ def test_get_challenge_add_message(
 
 	# Make a string to use as a challenge.  We'll include every URL-safe Base64
 	# character in the string.
-	challenge = (
+	challenge_str = (
 		'ABCDEFGHIJKLMNOPQRSTUVWXYZ' +
 		'abcdefghijklmnopqrstuvwxyz' +
 		'1234567890-_'
 	)
 
-	# Make a cleanup instance
-	cleanup = sudns01.clients.challenge.Cleanup(
+	# Make a challenge instance
+	challenge = sudns01.clients.challenge.Challenge(
 		blargh_localdomain,
 		acme_challenge_blargh_localdomain,
 	)
 
 	# Make add messages
-	message = cleanup.get_challenge_add_message(
-		challenge=challenge,
+	message = challenge.get_challenge_add_message(
+		challenge=challenge_str,
 		resolver=local_resolver,
 		signer=local_signer,
 	)
@@ -370,7 +370,7 @@ def test_get_challenge_add_message(
 	rdata = update[0]
 	assert rdata.rdclass == dns.rdataclass.IN
 	assert rdata.rdtype == dns.rdatatype.TXT
-	assert rdata.strings == (challenge.encode('ASCII'),)
+	assert rdata.strings == (challenge_str.encode('ASCII'),)
 
 def test_get_challenge_delete_message(
 	local_resolver,
@@ -394,21 +394,21 @@ def test_get_challenge_delete_message(
 
 	# Make a string to use as a challenge.  We'll include every URL-safe Base64
 	# character in the string.
-	challenge = (
+	challenge_str = (
 		'ABCDEFGHIJKLMNOPQRSTUVWXYZ' +
 		'abcdefghijklmnopqrstuvwxyz' +
 		'1234567890-_'
 	)
 
-	# Make a cleanup instance
-	cleanup = sudns01.clients.challenge.Cleanup(
+	# Make a challenge instance
+	challenge = sudns01.clients.challenge.Challenge(
 		blargh_localdomain,
 		acme_challenge_blargh_localdomain,
 	)
 
 	# Make add messages
-	message = cleanup.get_challenge_delete_message(
-		challenge=challenge,
+	message = challenge.get_challenge_delete_message(
+		challenge=challenge_str,
 		resolver=local_resolver,
 		signer=local_signer,
 	)
@@ -434,7 +434,7 @@ def test_get_challenge_delete_message(
 	rdata = update[0]
 	assert rdata.rdclass == dns.rdataclass.IN
 	assert rdata.rdtype == dns.rdatatype.TXT
-	assert rdata.strings == (challenge.encode('ASCII'),)
+	assert rdata.strings == (challenge_str.encode('ASCII'),)
 
 def test_challenge_in_dns(
 	local_query,
@@ -528,8 +528,8 @@ def test_challenge_in_dns(
 		strings2_rdata,
 	)
 
-	# Make a cleanup instance
-	cleanup = sudns01.clients.challenge.Cleanup(
+	# Make a challenge instance
+	challenge = sudns01.clients.challenge.Challenge(
 		host1_localdomain,
 		acme_challenge_host1_localdomain,
 	)
@@ -539,7 +539,7 @@ def test_challenge_in_dns(
 
 	# Make sure our challenge is in DNS
 	assert (
-		cleanup.is_challenge_in_dns(
+		challenge.is_challenge_in_dns(
 			challenge=string1,
 			resolver=local_resolver,
 		)
@@ -551,7 +551,7 @@ def test_challenge_in_dns(
 
 	# Make sure the challenge is no longer in DNS
 	assert (
-		cleanup.is_challenge_in_dns(
+		challenge.is_challenge_in_dns(
 			challenge=string1,
 			resolver=local_resolver,
 		)
@@ -563,7 +563,7 @@ def test_challenge_in_dns(
 
 	# The challenge should still not be in DNS
 	assert (
-		cleanup.is_challenge_in_dns(
+		challenge.is_challenge_in_dns(
 			challenge=string1,
 			resolver=local_resolver,
 		)
