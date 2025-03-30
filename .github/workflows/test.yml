@@ -105,6 +105,10 @@ jobs:
       run: |
         make test
 
+    - name: Stop test DNS and KDC
+      run: |
+        make test-clean
+
   codeql:
     name: Run CodeQL on ubuntu-latest & Python 3.13
     needs: pytest
