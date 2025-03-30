@@ -67,18 +67,14 @@
 
 # stdlib imports
 import argparse
-from collections.abc import Callable
 import logging
 import pathlib
 import sys
-from typing import Any, NoReturn
+from typing import NoReturn
 
 # PyPi imports
-import dns.message
 import dns.name
 import dns.rcode
-import dns.rdtypes.ANY.TXT
-import dns.update
 
 # local imports
 import sudns01.clients.challenge
@@ -236,7 +232,7 @@ def main_common(
 	DNSUPDATE_TIMEOUT: float = args.timeout
 	TARGET_NAME: dns.name.Name = dns.name.from_text(args.name)
 	TTL: int = 60
-	CHALLENGE: bytes = args.challenge.encode('ASCII')
+	CHALLENGE: str = args.challenge
 	dns_queries_on_udp = args.udp
 
 	# Prep for cleanup
@@ -275,20 +271,6 @@ def main_common(
 
 	# Set up a Resolver
 	dnslookup = sudns01.clients.resolver.ResolverClient()
-
-	# From the target name (a FQDN), we need to work out:
-	# * The _acme-challenge FQDN
-	# * The underlying zone name
-	# * The _acme-challenge name relative to the zone name
-	target_domain = dnslookup.get_zone_name(
-		TARGET_NAME,
-		raise_on_cdname=False,
-	)
-	ACME_CHALLENGE_LABEL = dns.name.Name(labels=('_acme-challenge',))
-	acme_challenge_name = ACME_CHALLENGE_LABEL.concatenate(TARGET_NAME)
-	acme_challenge_name_relative = acme_challenge_name.relativize(target_domain)
-	info(f"We will be working in domain {target_domain}")
-	info(f"We will be modifying label {acme_challenge_name_relative}")
 
 	# Get the IPs for our DNS server
 	try:
@@ -354,30 +336,11 @@ def main_common(
 				print(f"When trying to clean up a TXT record '{old_challenge_str}', received unexpected error {dns_delete_response.rcode().name} from DNS server")
 				sys.exit(2)
 
-	# Prepare our challenge record
-	# Note that TXT records are tuples of byte strings, with no specific encoding.
-	# Per RFC 8555 §8.4, challenge tokens only contain characters from the
-	# base64url alphabet, which is a subset of ASCII.  So, we can encode as ASCII.
-	challenge_rdata = dns.rdtypes.ANY.TXT.TXT(
-		rdclass=dns.rdataclass.IN,
-		rdtype=dns.rdatatype.TXT,
-		strings=(
-			CHALLENGE,
-		),
-	)
-
-	# Add a new ACME Challenge record
-
-	# Create the Add request
-	challenge_add = dns.update.UpdateMessage(
-		zone=target_domain,
-		rdclass=dns.rdataclass.IN,
-		**signer.dnspython_args,
-	)
-	challenge_add.add(
-		acme_challenge_name_relative,
-		TTL,
-		challenge_rdata,
+	# Get our challenge
+	challenge_add = cleanup.get_challenge_add_message(
+		challenge=CHALLENGE,
+		resolver=dnslookup,
+		signer=signer,
 	)
 
 	# Send out the request
@@ -409,29 +372,12 @@ def main_common(
 	signer.close()
 
 	# Wait for the record to appear via the system resolver
-	record_found = False
-	while not record_found:
+	while not cleanup.is_challenge_in_dns(
+			challenge=CHALLENGE,
+			resolver=dnslookup,
+	):
 		# Wait for some amount of time
 		waiter.wait()
-
-		# Do an uncached TXT lookup
-		txt_records = dnslookup.get_txt(
-			query=acme_challenge_name,
-			cached=False,
-			raise_on_cdname=False,
-		)
-
-		# Our output may contain tuples, so we can't do a simple `in` check
-		for txt_record in txt_records:
-			if isinstance(txt_record, bytes):
-				if txt_record == CHALLENGE:
-					record_found = True
-					break
-
-		if record_found:
-			info('Challenge found in system DNS')
-		else:
-			debug('Challenge not found.  Sleeping…')
 
 	# Wait to do the deletion
 	input('Record found in system DNS!  Press Return to delete the record')
@@ -447,14 +393,10 @@ def main_common(
 	)
 
 	# Create the Delete request
-	challenge_delete = dns.update.UpdateMessage(
-		zone=target_domain,
-		rdclass=dns.rdataclass.IN,
-		**signer.dnspython_args,
-	)
-	challenge_delete.delete(
-		acme_challenge_name_relative,
-		challenge_rdata,
+	challenge_delete = cleanup.get_challenge_delete_message(
+		challenge=CHALLENGE,
+		resolver=dnslookup,
+		signer=signer,
 	)
 
 	# Send out the request
