@@ -500,17 +500,30 @@ def test_challenge_in_dns(
 		strings2_rdata,
 	)
 
-	# Make our delete request
-	challenge_delete = dns.update.UpdateMessage(
+	# A NOTE about our test ordering.
+	# We push two TXT records to the DNS server.
+	# When the DNS server returns multiple TXT records, the ordering of the
+	# records is arbitrary.
+	# Therefore, we must ensure that `is_challenge_in_dns` sees both the
+	# one-item record *and* the two-item record.
+	# We ensure this by making separate delete messages for each record.
+
+	# Make a delete request for string1
+	challenge_delete_string1 = dns.update.UpdateMessage(
 		zone=localdomain,
 		rdclass=dns.rdataclass.IN,
 		**local_signer.dnspython_args,
 	)
-	challenge_delete.delete(
+	challenge_delete_string1.delete(
 		acme_challenge_host1,
 		string1_rdata,
 	)
-	challenge_delete.delete(
+	challenge_delete_strings2 = dns.update.UpdateMessage(
+		zone=localdomain,
+		rdclass=dns.rdataclass.IN,
+		**local_signer.dnspython_args,
+	)
+	challenge_delete_strings2.delete(
 		acme_challenge_host1,
 		strings2_rdata,
 	)
@@ -533,8 +546,8 @@ def test_challenge_in_dns(
 		is True
 	)
 
-	# Send our delete request
-	local_query.query(challenge_delete)
+	# Delete our matching string1, leaving strings2
+	local_query.query(challenge_delete_string1)
 
 	# Make sure the challenge is no longer in DNS
 	assert (
@@ -544,3 +557,16 @@ def test_challenge_in_dns(
 		)
 		is False
 	)
+
+	# Now delete strings2
+	local_query.query(challenge_delete_strings2)
+
+	# The challenge should still not be in DNS
+	assert (
+		cleanup.is_challenge_in_dns(
+			challenge=string1,
+			resolver=local_resolver,
+		)
+		is False
+	)
+
