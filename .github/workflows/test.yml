@@ -1,0 +1,124 @@
+# vim: ts=2 sw=2 et
+
+# On every push, and on every PR, run tests.
+#
+# We do the following things:
+# * Check for any NOCOMMIT things.
+# * Install Bind & MIT Kerberos.
+# * Run PyTest, which includes…
+#   * Running MyPy.
+# * Run CodeQL
+#
+# Tests are run against every Python version we list support for.
+#
+# We do not test against Windows yet, but some of the pieces are in place.
+#
+# Based on the workflow template from https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+
+name: Run tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  nocommit:
+    name: Check Nocommit
+    runs-on: ubuntu-latest
+
+    steps:
+      # This is v4 of the action
+    - name: Check out code
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+    # This is v2 of the action
+    - name: Check for N.O.C.O.M.M.I.T in the commits
+      uses: nobssoftware/nocommit@e4be6eb73ee96af2ade61ac54cdd3f5852714530
+
+  pytest:
+    name: Run Tests on ${{ matrix.os }} & Python ${{ matrix.python }}
+    needs: nocommit
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        python:
+          - "3.10"
+          - "3.11"
+          - "3.12"
+          - "3.13"
+        os:
+          - "ubuntu-latest"
+
+    permissions:
+      security-events: write
+      packages: read
+
+    steps:
+    - name: Install non-Python dependencies (Ubuntu)
+      if: ${{ runner.os == 'Linux' }}
+      run: |
+        # Install BIND & Kerberos
+        sudo apt install -y bind9 krb5-admin-server krb5-kdc krb5-user libkrb5-dev
+
+        # Stop & disable system named
+        sudo systemctl disable --now named
+
+        # Add AppArmor config to allow named into our workspace
+        cat - > /tmp/usr.sbin.named <<EOF
+        # Allow read/write in bind's space in the workdir
+        ${{ github.workspace }}/ rw,
+        ${{ github.workspace }}/** rw,
+        EOF
+        sudo cp /tmp/usr.sbin.named /etc/apparmor.d/local/usr.sbin.named
+        cat /etc/apparmor.d/local/usr.sbin.named
+        sudo apparmor_parser -r /etc/apparmor.d/usr.sbin.named
+
+    - name: Install non-Python dependencies (Windows)
+      if: ${{ runner.os == 'Windows' }}
+      shell: powershell
+      run: |
+        $pkg = "$env:TMP\kfw.msi"
+        Invoke-WebRequest -OutFile $pkg -Uri https://web.mit.edu/kerberos/dist/kfw/4.1/kfw-4.1-amd64.msi
+        Start-Process -FilePath msiexec -ArgumentList @("/i", "$pkg", "/qn", "/norestart", "ADDLOCAL=ALL") -Wait
+
+      # This is v4 of the action
+    - name: Check out code
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      # This is v5.5.0 of the action
+    - name: Set up Python
+      uses: actions/setup-python@8d9ed9ac5c53483de85588cdf95a591a75ab9f55
+      with:
+        python-version: "${{ matrix.python }}"
+        cache: 'pip'
+
+    - name: Install dependencies for testing
+      run: |
+        ls -l
+        make .installed-test-editable
+
+    - name: Start test DNS and KDC
+      run: |
+        make test-env
+
+    - name: Run tests
+      run: |
+        make test
+
+      # This is v3.28.13
+    - name: CodeQL Init
+      if: ${{ runner.os == 'Linux' }}
+      uses: github/codeql-action/init@1b549b9259bda1cb5ddde3b41741a82a2d15a841
+      with:
+        languages: python
+
+      # This is v3.28.13
+    - name: CodeQL Analyze
+      if: ${{ runner.os == 'Linux' }}
+      uses: github/codeql-action/analyze@1b549b9259bda1cb5ddde3b41741a82a2d15a841
+      with:
+        category: "/language:python"
