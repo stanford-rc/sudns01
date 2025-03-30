@@ -70,8 +70,8 @@ jobs:
         # Add AppArmor config to allow named into our workspace
         cat - > /tmp/usr.sbin.named <<EOF
         # Allow read/write in bind's space in the workdir
-        ${{ github.workspace }}/ rw,
-        ${{ github.workspace }}/** rw,
+        ${{ github.workspace }}/ rwk,
+        ${{ github.workspace }}/** rwk,
         EOF
         sudo cp /tmp/usr.sbin.named /etc/apparmor.d/local/usr.sbin.named
         cat /etc/apparmor.d/local/usr.sbin.named
