@@ -17,7 +17,7 @@
 # NOTE: Setuptools support for pyproject.toml began in version 61.0.0.
 [build-system]
 requires = [
-    "setuptools >= 62.1.0",
+	"setuptools >= 62.1.0",
 ]
 build-backend = "setuptools.build_meta"
 
@@ -38,23 +38,23 @@ license = { text = "Apache-2.0" }
 
 # Classifiers is a typical array
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
-    "Environment :: Console",
+	"Development Status :: 2 - Pre-Alpha",
+	"Environment :: Console",
 	"Environment :: Plugins",
-    "Framework :: Sphinx",
-    "Intended Audience :: System Administrators",
-    "License :: OSI Approved :: Apache Software License",
-    "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
-    "Topic :: Internet :: WWW/HTTP",
-    "Topic :: Security",
+	"Framework :: Sphinx",
+	"Intended Audience :: System Administrators",
+	"License :: OSI Approved :: Apache Software License",
+	"Operating System :: OS Independent",
+	"Programming Language :: Python :: 3 :: Only",
+	"Programming Language :: Python :: 3.10",
+	"Programming Language :: Python :: 3.11",
+	"Programming Language :: Python :: 3.12",
+	"Programming Language :: Python :: 3.13",
+	"Topic :: Internet :: WWW/HTTP",
+	"Topic :: Security",
 	"Topic :: System :: Networking",
 	"Topic :: System :: Systems Administration",
-    "Typing :: Typed",
+	"Typing :: Typed",
 ]
 
 # URLs is its own table, so it has to come later…
@@ -67,8 +67,8 @@ requires-python = "<4.0, >=3.10"
 # 2: Required dependencies.
 dependencies = [
 	"certbot <4.0, >=3.2.0",
-    "dnspython <3.0, >=2.7.0",
-    "gssapi <2.0, >=1.8.0",
+	"dnspython <3.0, >=2.7.0",
+	"gssapi <2.0, >=1.8.0",
 	"humanfriendly <11.0, >=10.0",
 ]
 
@@ -96,10 +96,10 @@ test = [
 
 # URLs is a table, just like before.
 [project.urls]
-    "Homepage" = "https://github.com/stanford-rc/sudns01"
-    "Bug Tracker" = "https://github.com/stanford-rc/sudns01/issues"
-    "Source Code" = "https://github.com/stanford-rc/sudns01/tree/main1"
-    "Documentation" = "https://stanford-rc.github.io/sudns01/"
+	"Homepage" = "https://github.com/stanford-rc/sudns01"
+	"Bug Tracker" = "https://github.com/stanford-rc/sudns01/issues"
+	"Source Code" = "https://github.com/stanford-rc/sudns01/tree/main1"
+	"Documentation" = "https://stanford-rc.github.io/sudns01/"
 
 # Define the packages we install, and where to find them.
 
