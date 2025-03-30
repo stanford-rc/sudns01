@@ -437,9 +437,11 @@ class Cleanup():
 		# Our output may contain tuples, so we can't do a simple `in` check
 		for txt_record in txt_records:
 			if isinstance(txt_record, tuple):
-				debug(f"Checking tuple {txt_record!r}")
-				if txt_record[0] == challenge_bytes:
-					return True
+				# Challenges are only ever single-item tuples.
+				# Single-item tuples are unpacked by `get_txt`, so we we get a
+				# tuple, it's definitely wrong.
+				debug(f"Skipping non-challenge tuple {txt_record!r}")
+				continue
 			else:
 				debug(f"Checking bytes {txt_records!r}")
 				if txt_record == challenge_bytes:
