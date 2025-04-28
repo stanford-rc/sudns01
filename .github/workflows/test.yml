@@ -87,7 +87,7 @@ jobs:
 
       # This is v5.5.0 of the action
     - name: Set up Python
-      uses: actions/setup-python@8d9ed9ac5c53483de85588cdf95a591a75ab9f55
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
       with:
         python-version: "${{ matrix.python }}"
         cache: 'pip'
@@ -144,7 +144,7 @@ jobs:
 
       # This is v5.5.0 of the action
     - name: Set up Python
-      uses: actions/setup-python@8d9ed9ac5c53483de85588cdf95a591a75ab9f55
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
       with:
         python-version: "3.13"
         cache: 'pip'
@@ -157,13 +157,13 @@ jobs:
       # This is v3.28.13
     - name: CodeQL Init
       if: ${{ runner.os == 'Linux' }}
-      uses: github/codeql-action/init@1b549b9259bda1cb5ddde3b41741a82a2d15a841
+      uses: github/codeql-action/init@28deaeda66b76a05916b6923827895f2b14ab387
       with:
         languages: python
 
       # This is v3.28.13
     - name: CodeQL Analyze
       if: ${{ runner.os == 'Linux' }}
-      uses: github/codeql-action/analyze@1b549b9259bda1cb5ddde3b41741a82a2d15a841
+      uses: github/codeql-action/analyze@28deaeda66b76a05916b6923827895f2b14ab387
       with:
         category: "/language:python"
