@@ -157,13 +157,13 @@ jobs:
       # This is v3.28.13
     - name: CodeQL Init
       if: ${{ runner.os == 'Linux' }}
-      uses: github/codeql-action/init@39edc492dbe16b1465b0cafca41432d857bdb31a
+      uses: github/codeql-action/init@181d5eefc20863364f96762470ba6f862bdef56b
       with:
         languages: python
 
       # This is v3.28.13
     - name: CodeQL Analyze
       if: ${{ runner.os == 'Linux' }}
-      uses: github/codeql-action/analyze@39edc492dbe16b1465b0cafca41432d857bdb31a
+      uses: github/codeql-action/analyze@181d5eefc20863364f96762470ba6f862bdef56b
       with:
         category: "/language:python"
