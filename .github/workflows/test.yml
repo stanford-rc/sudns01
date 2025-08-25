@@ -32,7 +32,7 @@ jobs:
     steps:
       # This is v4 of the action
     - name: Check out code
-      uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
     # This is v2 of the action
     - name: Check for N.O.C.O.M.M.I.T in the commits
@@ -83,7 +83,7 @@ jobs:
 
       # This is v4 of the action
     - name: Check out code
-      uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       # This is v5.5.0 of the action
     - name: Set up Python
@@ -140,7 +140,7 @@ jobs:
 
       # This is v4 of the action
     - name: Check out code
-      uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       # This is v5.5.0 of the action
     - name: Set up Python
@@ -157,13 +157,13 @@ jobs:
       # This is v3.28.13
     - name: CodeQL Init
       if: ${{ runner.os == 'Linux' }}
-      uses: github/codeql-action/init@76621b61decf072c1cee8dd1ce2d2a82d33c17ed
+      uses: github/codeql-action/init@3c3833e0f8c1c83d449a7478aa59c036a9165498
       with:
         languages: python
 
       # This is v3.28.13
     - name: CodeQL Analyze
       if: ${{ runner.os == 'Linux' }}
-      uses: github/codeql-action/analyze@76621b61decf072c1cee8dd1ce2d2a82d33c17ed
+      uses: github/codeql-action/analyze@3c3833e0f8c1c83d449a7478aa59c036a9165498
       with:
         category: "/language:python"
